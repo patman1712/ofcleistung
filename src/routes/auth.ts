@@ -23,7 +23,7 @@ router.post('/login', authMiddleware, async (req, res) => {
     const ok = await bcrypt.compare(password, user.passwordHash);
     if (!ok) return res.status(401).json({ error: 'Login fehlgeschlagen' });
 
-    const token = signToken({ userId: user.id, role: user.role, name: user.name });
+    const token = signToken({ userId: user.id, role: user.role as Role, name: user.name });
     res.cookie('token', token, {
       httpOnly: true,
       maxAge: 30 * 24 * 60 * 60 * 1000,

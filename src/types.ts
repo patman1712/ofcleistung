@@ -23,3 +23,15 @@ export function isRole(v: unknown): v is Role {
 export function isQuestionType(v: unknown): v is QuestionType {
   return v === 'RATING_1_10' || v === 'TEXT';
 }
+
+export function asString(v: unknown): string | undefined {
+  if (Array.isArray(v)) return v[0] ? String(v[0]) : undefined;
+  return v === undefined || v === null ? undefined : String(v);
+}
+
+export function asInt(v: unknown): number | undefined {
+  const s = asString(v);
+  if (s === undefined) return undefined;
+  const n = parseInt(s, 10);
+  return isNaN(n) ? undefined : n;
+}

@@ -2,7 +2,7 @@ import { Router } from 'express';
 import { z } from 'zod';
 import { prisma } from '../lib/prisma.js';
 import { requireAdmin, authMiddleware, requireAuth } from '../middleware/auth.js';
-import { QuestionType } from '../types.js';
+import { QuestionType, asString } from '../types.js';
 import { startOfDay, format } from 'date-fns';
 
 const router = Router();
@@ -37,7 +37,7 @@ router.post('/', authMiddleware, requireAdmin, async (req, res) => {
 // Admin: Frage bearbeiten
 router.put('/:id', authMiddleware, requireAdmin, async (req, res) => {
   try {
-    const { id } = req.params;
+    const id = asString(req.params.id)!;
     const data = questionSchema.partial().parse(req.body);
     const q = await prisma.dailyQuestion.update({ where: { id }, data: data as any });
     res.json(q);
@@ -49,7 +49,7 @@ router.put('/:id', authMiddleware, requireAdmin, async (req, res) => {
 // Admin: Frage löschen
 router.delete('/:id', authMiddleware, requireAdmin, async (req, res) => {
   try {
-    const { id } = req.params;
+    const id = asString(req.params.id)!;
     await prisma.dailyQuestion.delete({ where: { id } });
     res.json({ ok: true });
   } catch (err: any) {

@@ -2,7 +2,7 @@ import { Router } from 'express';
 import { z } from 'zod';
 import { prisma } from '../lib/prisma.js';
 import { requireAdmin, authMiddleware, requireAuth } from '../middleware/auth.js';
-import { QuestionType } from '../types.js';
+import { QuestionType, asString } from '../types.js';
 import { addMinutes } from 'date-fns';
 
 const router = Router();
@@ -61,7 +61,7 @@ router.post('/', authMiddleware, requireAdmin, async (req, res) => {
           create: data.playerProfileIds.map((id) => ({ playerProfileId: id })),
         },
         questions: {
-          create: data.questions,
+          create: data.questions as any,
         },
       },
       include: {
@@ -78,7 +78,7 @@ router.post('/', authMiddleware, requireAdmin, async (req, res) => {
 // Admin: Training bearbeiten (Titel, Datum, Dauer, Spieler)
 router.put('/:id', authMiddleware, requireAdmin, async (req, res) => {
   try {
-    const { id } = req.params;
+    const id = asString(req.params.id)!;
     const body = createTrainingSchema.partial().parse(req.body);
 
     const updateData: any = {};
@@ -110,7 +110,7 @@ router.put('/:id', authMiddleware, requireAdmin, async (req, res) => {
 // Admin: Training löschen
 router.delete('/:id', authMiddleware, requireAdmin, async (req, res) => {
   try {
-    const { id } = req.params;
+    const id = asString(req.params.id)!;
     await prisma.training.delete({ where: { id } });
     res.json({ ok: true });
   } catch (err: any) {
@@ -121,14 +121,14 @@ router.delete('/:id', authMiddleware, requireAdmin, async (req, res) => {
 // Admin: Frage zu Training hinzufügen
 router.post('/:id/questions', authMiddleware, requireAdmin, async (req, res) => {
   try {
-    const { id } = req.params;
+    const id = asString(req.params.id)!;
     const body = z.object({
       text: z.string().min(1),
       questionType: z.enum(['RATING_1_10', 'TEXT']).default('RATING_1_10'),
       sortOrder: z.number().int().min(0).default(0),
     }).parse(req.body);
     const q = await prisma.trainingQuestion.create({
-      data: { trainingId: id, ...body },
+      data: { trainingId: id, ...body } as any,
     });
     res.status(201).json(q);
   } catch (err: any) {
@@ -139,7 +139,7 @@ router.post('/:id/questions', authMiddleware, requireAdmin, async (req, res) => 
 // Admin: Frage bearbeiten
 router.put('/questions/:qid', authMiddleware, requireAdmin, async (req, res) => {
   try {
-    const { qid } = req.params;
+    const qid = asString(req.params.qid)!;
     const body = z.object({
       text: z.string().min(1).optional(),
       questionType: z.enum(['RATING_1_10', 'TEXT']).optional(),
@@ -155,7 +155,7 @@ router.put('/questions/:qid', authMiddleware, requireAdmin, async (req, res) => 
 // Admin: Frage löschen
 router.delete('/questions/:qid', authMiddleware, requireAdmin, async (req, res) => {
   try {
-    const { qid } = req.params;
+    const qid = asString(req.params.qid)!;
     await prisma.trainingQuestion.delete({ where: { id: qid } });
     res.json({ ok: true });
   } catch (err: any) {
@@ -187,7 +187,7 @@ router.get('/open/pending', authMiddleware, requireAuth, async (req, res) => {
       },
       answers: true,
     },
-  });
+  }) as any[];
   const result = tps
     .filter((tp) => tp.answers.length === 0 && tp.training.questions.length > 0)
     .map((tp) => ({

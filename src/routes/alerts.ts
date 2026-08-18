@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { z } from 'zod';
 import { prisma } from '../lib/prisma.js';
 import { requireAdmin, authMiddleware } from '../middleware/auth.js';
+import { asString } from '../types.js';
 
 const router = Router();
 
@@ -34,7 +35,7 @@ router.post('/configs', authMiddleware, requireAdmin, async (req, res) => {
 
 router.put('/configs/:id', authMiddleware, requireAdmin, async (req, res) => {
   try {
-    const { id } = req.params;
+    const id = asString(req.params.id)!;
     const data = configSchema.partial().parse(req.body);
     const c = await prisma.alertConfig.update({ where: { id }, data: data as any });
     res.json(c);
@@ -45,7 +46,7 @@ router.put('/configs/:id', authMiddleware, requireAdmin, async (req, res) => {
 
 router.delete('/configs/:id', authMiddleware, requireAdmin, async (req, res) => {
   try {
-    const { id } = req.params;
+    const id = asString(req.params.id)!;
     await prisma.alertConfig.delete({ where: { id } });
     res.json({ ok: true });
   } catch (err: any) {
@@ -71,7 +72,7 @@ router.get('/open', authMiddleware, requireAdmin, async (req, res) => {
 // Alert als erledigt markieren
 router.post('/:id/resolve', authMiddleware, requireAdmin, async (req, res) => {
   try {
-    const { id } = req.params;
+    const id = asString(req.params.id)!;
     const a = await prisma.alert.update({
       where: { id },
       data: { resolved: true },

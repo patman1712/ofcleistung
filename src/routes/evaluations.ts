@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { prisma } from '../lib/prisma.js';
 import { requireAdmin, authMiddleware } from '../middleware/auth.js';
 import { startOfDay, subDays } from 'date-fns';
+import { asString } from '../types.js';
 
 const router = Router();
 
@@ -48,7 +49,7 @@ router.get('/overview', authMiddleware, requireAdmin, async (req, res) => {
 
 // Admin: Detailansicht eines Spielers
 router.get('/player/:playerId', authMiddleware, requireAdmin, async (req, res) => {
-  const { playerId } = req.params;
+  const playerId = asString(req.params.playerId)!;
   const user = await prisma.user.findUnique({
     where: { id: playerId },
     include: { playerProfile: true },
@@ -56,14 +57,14 @@ router.get('/player/:playerId', authMiddleware, requireAdmin, async (req, res) =
   if (!user) return res.status(404).json({ error: 'Nicht gefunden' });
 
   const dailySessions = await prisma.dailyAnswerSession.findMany({
-    where: { playerId },
+    where: { playerId: playerId },
     include: { answers: { include: { question: true } } },
     orderBy: { date: 'desc' },
     take: 30,
   });
 
   const trainingAnswers = await prisma.trainingAnswer.findMany({
-    where: { playerId },
+    where: { playerId: playerId },
     include: {
       question: true,
       trainingPlayer: {
@@ -76,8 +77,9 @@ router.get('/player/:playerId', authMiddleware, requireAdmin, async (req, res) =
     take: 100,
   });
 
+  const userAny = user as any;
   const alerts = await prisma.alert.findMany({
-    where: { playerProfileId: user.playerProfile?.id },
+    where: { playerProfileId: userAny.playerProfile?.id },
     include: { config: true },
     orderBy: { createdAt: 'desc' },
     take: 50,

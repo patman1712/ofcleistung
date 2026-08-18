@@ -3,7 +3,7 @@ import bcrypt from 'bcryptjs';
 import { z } from 'zod';
 import { prisma } from '../lib/prisma.js';
 import { requireAdmin, authMiddleware } from '../middleware/auth.js';
-import { Role } from '../types.js';
+import { Role, asString } from '../types.js';
 
 const router = Router();
 
@@ -63,7 +63,7 @@ router.post('/', authMiddleware, requireAdmin, async (req, res) => {
 // ADMIN: Spieler bearbeiten
 router.put('/:id', authMiddleware, requireAdmin, async (req, res) => {
   try {
-    const { id } = req.params;
+    const id = asString(req.params.id)!;
     const body = createPlayerSchema.partial().parse(req.body);
     const updateData: any = {};
     if (body.email) updateData.email = body.email.toLowerCase();
@@ -95,7 +95,7 @@ router.put('/:id', authMiddleware, requireAdmin, async (req, res) => {
 // ADMIN: Spieler löschen
 router.delete('/:id', authMiddleware, requireAdmin, async (req, res) => {
   try {
-    const { id } = req.params;
+    const id = asString(req.params.id)!;
     await prisma.user.delete({ where: { id } });
     res.json({ ok: true });
   } catch (err: any) {

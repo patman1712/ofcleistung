@@ -128,6 +128,7 @@ model TrainingQuestion {
   text         String
   questionType String   @default("RATING_1_10") // "RATING_1_10" | "TEXT"
   sortOrder    Int      @default(0)
+  createdAt    DateTime @default(now())
 
   answers TrainingAnswer[]
 
