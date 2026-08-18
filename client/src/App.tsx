@@ -9,18 +9,21 @@ import AdminDailyQuestions from './pages/admin/DailyQuestions';
 import AdminTrainings from './pages/admin/Trainings';
 import AdminEvaluations from './pages/admin/Evaluations';
 import AdminAlerts from './pages/admin/Alerts';
+import AdminSettings from './pages/admin/Settings';
 import PlayerDashboard from './pages/player/Dashboard';
 import PlayerDailyForm from './pages/player/DailyForm';
 import PlayerTrainingForm from './pages/player/TrainingForm';
 import PlayerProfile from './pages/player/Profile';
 import api from './lib/api';
 
+export type AppRole = 'ADMIN' | 'STAFF' | 'PLAYER';
+
 function ProtectedRoute({
   children,
   roles,
 }: {
   children: React.ReactNode;
-  roles?: ('ADMIN' | 'PLAYER')[];
+  roles?: AppRole[];
 }) {
   const { user, loading } = useAuth();
   const loc = useLocation();
@@ -33,8 +36,8 @@ function ProtectedRoute({
     );
   }
   if (!user) return <Navigate to="/login" replace state={{ from: loc }} />;
-  if (roles && !roles.includes(user.role)) {
-    if (user.role === 'ADMIN') return <Navigate to="/admin" replace />;
+  if (roles && !roles.includes(user.role as AppRole)) {
+    if (user.role === 'ADMIN' || user.role === 'STAFF') return <Navigate to="/admin" replace />;
     return <Navigate to="/player" replace />;
   }
   return <>{children}</>;
@@ -65,13 +68,13 @@ function PlayerRouteGuard({ children }: { children: React.ReactNode }) {
           api.get('/daily-questions/status/today'),
           api.get('/trainings/open/pending'),
         ]);
-        if (!dailyRes.data.answered && dailyRes.data.questions.length > 0) {
+        if (!dailyRes.data.answered && dailyRes.data.questions?.length > 0) {
           setRedirect('/player/daily');
-        } else if (trainingRes.data.length > 0) {
+        } else if (trainingRes.data?.length > 0) {
           setRedirect(`/player/training/${trainingRes.data[0].trainingPlayerId}`);
         }
       } catch (e) {
-        // ignore
+        // ignore route guard errors - page will still load
       } finally {
         setChecking(false);
       }
@@ -94,50 +97,129 @@ export default function App() {
     <Routes>
       <Route path="/login" element={<Login />} />
 
+      {/* ADMIN + STAFF ROUTES (STAFF kann AUCH alles außer User löschen/Anlegen) */}
       <Route
-        path="/admin/*"
+        path="/admin"
+        element={
+          <ProtectedRoute roles={['ADMIN', 'STAFF']}>
+            <Layout>
+              <AdminDashboard />
+            </Layout>
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/admin/players"
         element={
           <ProtectedRoute roles={['ADMIN']}>
             <Layout>
-              <Routes>
-                <Route path="/" element={<AdminDashboard />} />
-                <Route path="/players" element={<AdminPlayers />} />
-                <Route path="/daily-questions" element={<AdminDailyQuestions />} />
-                <Route path="/trainings" element={<AdminTrainings />} />
-                <Route path="/evaluations" element={<AdminEvaluations />} />
-                <Route path="/alerts" element={<AdminAlerts />} />
-                <Route path="*" element={<Navigate to="/admin" replace />} />
-              </Routes>
+              <AdminPlayers />
+            </Layout>
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/admin/daily-questions"
+        element={
+          <ProtectedRoute roles={['ADMIN', 'STAFF']}>
+            <Layout>
+              <AdminDailyQuestions />
+            </Layout>
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/admin/trainings"
+        element={
+          <ProtectedRoute roles={['ADMIN', 'STAFF']}>
+            <Layout>
+              <AdminTrainings />
+            </Layout>
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/admin/evaluations"
+        element={
+          <ProtectedRoute roles={['ADMIN', 'STAFF']}>
+            <Layout>
+              <AdminEvaluations />
+            </Layout>
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/admin/alerts"
+        element={
+          <ProtectedRoute roles={['ADMIN', 'STAFF']}>
+            <Layout>
+              <AdminAlerts />
+            </Layout>
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/admin/settings"
+        element={
+          <ProtectedRoute roles={['ADMIN']}>
+            <Layout>
+              <AdminSettings />
             </Layout>
           </ProtectedRoute>
         }
       />
 
+      {/* PLAYER ROUTES */}
       <Route
-        path="/player/*"
+        path="/player"
         element={
           <ProtectedRoute roles={['PLAYER']}>
             <PlayerRouteGuard>
               <Layout>
-                <Routes>
-                  <Route path="/" element={<PlayerDashboard />} />
-                  <Route path="/daily" element={<PlayerDailyForm />} />
-                  <Route path="/training/:tpId" element={<PlayerTrainingForm />} />
-                  <Route path="/profile" element={<PlayerProfile />} />
-                  <Route path="*" element={<Navigate to="/player" replace />} />
-                </Routes>
+                <PlayerDashboard />
+              </Layout>
+            </PlayerRouteGuard>
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/player/daily"
+        element={
+          <ProtectedRoute roles={['PLAYER']}>
+            <PlayerRouteGuard>
+              <Layout>
+                <PlayerDailyForm />
+              </Layout>
+            </PlayerRouteGuard>
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/player/training/:tpId"
+        element={
+          <ProtectedRoute roles={['PLAYER']}>
+            <PlayerRouteGuard>
+              <Layout>
+                <PlayerTrainingForm />
+              </Layout>
+            </PlayerRouteGuard>
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/player/profile"
+        element={
+          <ProtectedRoute roles={['PLAYER']}>
+            <PlayerRouteGuard>
+              <Layout>
+                <PlayerProfile />
               </Layout>
             </PlayerRouteGuard>
           </ProtectedRoute>
         }
       />
 
-      <Route
-        path="*"
-        element={
-          <RootRedirect />
-        }
-      />
+      <Route path="*" element={<RootRedirect />} />
     </Routes>
   );
 }
@@ -152,6 +234,6 @@ function RootRedirect() {
     );
   }
   if (!user) return <Navigate to="/login" replace />;
-  if (user.role === 'ADMIN') return <Navigate to="/admin" replace />;
+  if (user.role === 'ADMIN' || user.role === 'STAFF') return <Navigate to="/admin" replace />;
   return <Navigate to="/player" replace />;
 }

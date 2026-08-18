@@ -6,11 +6,13 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 
 import authRouter from './routes/auth.js';
+import usersRouter from './routes/users.js';
 import playersRouter from './routes/players.js';
 import dailyQuestionsRouter from './routes/dailyQuestions.js';
 import trainingsRouter from './routes/trainings.js';
 import evaluationsRouter from './routes/evaluations.js';
 import alertsRouter from './routes/alerts.js';
+import settingsRouter from './routes/settings.js';
 import { authMiddleware } from './middleware/auth.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -29,11 +31,13 @@ app.use(cookieParser());
 app.use(authMiddleware);
 
 app.use('/api/auth', authRouter);
+app.use('/api/users', usersRouter);
 app.use('/api/players', playersRouter);
 app.use('/api/daily-questions', dailyQuestionsRouter);
 app.use('/api/trainings', trainingsRouter);
 app.use('/api/evaluations', evaluationsRouter);
 app.use('/api/alerts', alertsRouter);
+app.use('/api/settings', settingsRouter);
 
 // Frontend ausliefern (Production)
 const clientDist = path.resolve(__dirname, '..', 'client', 'dist');

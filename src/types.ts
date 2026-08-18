@@ -1,13 +1,14 @@
 // Lokale String-Union Typen als Ersatz fuer Prisma-Enums (SQLite kann keine Enums)
 // Entsprechen exakt den Werten, die im Prisma-Schema als String modelliert sind.
 
-export type Role = 'ADMIN' | 'PLAYER';
+export type Role = 'ADMIN' | 'STAFF' | 'PLAYER';
 export type QuestionType = 'RATING_1_10' | 'TEXT';
 export type AlertScope = 'DAILY' | 'TRAINING' | 'ALL';
 export type AlertSeverity = 'WARNING' | 'CRITICAL';
 
 export const ROLES: { [K in Role]: K } = {
   ADMIN: 'ADMIN',
+  STAFF: 'STAFF',
   PLAYER: 'PLAYER',
 };
 
@@ -17,7 +18,7 @@ export const QUESTION_TYPES: { [K in QuestionType]: K } = {
 };
 
 export function isRole(v: unknown): v is Role {
-  return v === 'ADMIN' || v === 'PLAYER';
+  return v === 'ADMIN' || v === 'STAFF' || v === 'PLAYER';
 }
 
 export function isQuestionType(v: unknown): v is QuestionType {

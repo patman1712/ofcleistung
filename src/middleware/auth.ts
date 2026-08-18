@@ -58,3 +58,9 @@ export function requireAdmin(req: Request, res: Response, next: NextFunction) {
   if (req.auth.role !== 'ADMIN') return res.status(403).json({ error: 'Keine Admin-Rechte' });
   next();
 }
+
+export function requireAdminOrStaff(req: Request, res: Response, next: NextFunction) {
+  if (!req.auth) return res.status(401).json({ error: 'Nicht eingeloggt' });
+  if (req.auth.role !== 'ADMIN' && req.auth.role !== 'STAFF') return res.status(403).json({ error: 'Keine Berechtigung' });
+  next();
+}

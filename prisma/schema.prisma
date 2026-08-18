@@ -178,3 +178,10 @@ model Alert {
   @@index([playerProfileId])
   @@index([resolved])
 }
+
+model Setting {
+  id    String @id @default(cuid())
+  key   String @unique
+  value String // JSON oder Base64 oder Plaintext
+  updatedAt DateTime @updatedAt
+}

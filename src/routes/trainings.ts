@@ -21,11 +21,11 @@ const createTrainingSchema = z.object({
   ).default([]),
 });
 
-// Admin: Alle Trainings
+// Admin + Staff: Alle Trainings (Spieler sieht nur eigene)
 router.get('/', authMiddleware, requireAuth, async (req, res) => {
-  const isAdmin = req.auth!.role === 'ADMIN';
+  const isAdminOrStaff = req.auth!.role === 'ADMIN' || req.auth!.role === 'STAFF';
   const where: any = {};
-  if (!isAdmin) {
+  if (!isAdminOrStaff) {
     // Nur Trainings anzeigen, in denen der Spieler eingetragen ist
     const profile = await prisma.playerProfile.findUnique({
       where: { userId: req.auth!.userId },

@@ -9,6 +9,11 @@ data/
 *.db-journal
 prisma/dev.db*
 
+# TypeScript Build-Info Artefakte & temporäre Compiles
+*.tsbuildinfo
+client/vite.config.js
+client/vite.config.d.ts
+
 # Lokale Backups von Dockerfiles / alte Container-Configs - NIEMALS auf Railway!
 Backup_Deployment_Container.txt
 Dockerfile*

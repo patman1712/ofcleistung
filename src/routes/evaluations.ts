@@ -1,13 +1,13 @@
 import { Router } from 'express';
 import { prisma } from '../lib/prisma.js';
-import { requireAdmin, authMiddleware } from '../middleware/auth.js';
+import { requireAdmin, requireAdminOrStaff, authMiddleware } from '../middleware/auth.js';
 import { startOfDay, subDays } from 'date-fns';
 import { asString } from '../types.js';
 
 const router = Router();
 
-// Admin: Übersicht mit allen Spielern + aktuellen Werten
-router.get('/overview', authMiddleware, requireAdmin, async (req, res) => {
+// Admin + Staff: Übersicht mit allen Spielern + aktuellen Werten
+router.get('/overview', authMiddleware, requireAdminOrStaff, async (req, res) => {
   const players = await prisma.user.findMany({
     where: { role: 'PLAYER' },
     include: { playerProfile: true },
@@ -47,8 +47,8 @@ router.get('/overview', authMiddleware, requireAdmin, async (req, res) => {
   res.json(result);
 });
 
-// Admin: Detailansicht eines Spielers
-router.get('/player/:playerId', authMiddleware, requireAdmin, async (req, res) => {
+// Admin + Staff: Detailansicht eines Spielers
+router.get('/player/:playerId', authMiddleware, requireAdminOrStaff, async (req, res) => {
   const playerId = asString(req.params.playerId)!;
   const user = await prisma.user.findUnique({
     where: { id: playerId },

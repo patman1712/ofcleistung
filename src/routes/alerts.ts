@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { z } from 'zod';
 import { prisma } from '../lib/prisma.js';
-import { requireAdmin, authMiddleware } from '../middleware/auth.js';
+import { requireAdmin, requireAdminOrStaff, authMiddleware } from '../middleware/auth.js';
 import { asString } from '../types.js';
 
 const router = Router();
@@ -14,8 +14,8 @@ const configSchema = z.object({
   active: z.boolean().default(true),
 });
 
-// Admin: Alert-Konfigurationen
-router.get('/configs', authMiddleware, requireAdmin, async (req, res) => {
+// Admin + Staff: Alert-Konfigurationen (Lesen)
+router.get('/configs', authMiddleware, requireAdminOrStaff, async (req, res) => {
   const configs = await prisma.alertConfig.findMany({
     orderBy: { createdAt: 'desc' },
     include: { _count: { select: { alerts: true } } },
@@ -54,8 +54,8 @@ router.delete('/configs/:id', authMiddleware, requireAdmin, async (req, res) => 
   }
 });
 
-// Alle offenen Alerts
-router.get('/open', authMiddleware, requireAdmin, async (req, res) => {
+// Admin + Staff: Alle offenen Alerts
+router.get('/open', authMiddleware, requireAdminOrStaff, async (req, res) => {
   const alerts = await prisma.alert.findMany({
     where: { resolved: false },
     include: {
