@@ -1,0 +1,178 @@
+// Prisma Schema - OFC Leistungsdiagnostik (SQLite)
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  ADMIN
+  PLAYER
+}
+
+enum QuestionType {
+  RATING_1_10
+  TEXT
+}
+
+model User {
+  id           String    @id @default(cuid())
+  email        String    @unique
+  passwordHash String
+  name         String
+  role         Role      @default(PLAYER)
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  playerProfile PlayerProfile?
+
+  dailyAnswers    DailyAnswer[]
+  trainingAnswers TrainingAnswer[]
+  createdTrainings Training[]
+}
+
+model PlayerProfile {
+  id          String   @id @default(cuid())
+  userId      String   @unique
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  birthDate   DateTime?
+  heightCm    Int?
+  weightKg    Float?
+  position    String?
+
+  trainingsAsPlayer TrainingPlayer[]
+  alerts            Alert[]
+}
+
+model DailyQuestion {
+  id           String       @id @default(cuid())
+  text         String
+  questionType QuestionType @default(RATING_1_10)
+  sortOrder    Int          @default(0)
+  active       Boolean      @default(true)
+  repeatTime   String?      @default("06:00")
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
+
+  answers DailyAnswer[]
+}
+
+model DailyAnswerSession {
+  id          String   @id @default(cuid())
+  playerId    String
+  player      User     @relation(fields: [playerId], references: [id], onDelete: Cascade)
+  date        DateTime
+  completedAt DateTime?
+  createdAt   DateTime @default(now())
+
+  answers DailyAnswer[]
+
+  @@unique([playerId, date])
+  @@index([playerId, date])
+}
+
+model DailyAnswer {
+  id         String              @id @default(cuid())
+  sessionId  String
+  session    DailyAnswerSession  @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  playerId   String
+  player     User                @relation(fields: [playerId], references: [id], onDelete: Cascade)
+  questionId String
+  question   DailyQuestion       @relation(fields: [questionId], references: [id], onDelete: Cascade)
+  rating     Int?
+  text       String?
+  createdAt  DateTime @default(now())
+
+  @@index([sessionId])
+  @@index([playerId])
+  @@index([questionId])
+}
+
+model Training {
+  id          String   @id @default(cuid())
+  title       String
+  scheduledAt DateTime
+  durationMin Int?
+  createdById String
+  createdBy   User     @relation(fields: [createdById], references: [id], onDelete: Restrict)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  players   TrainingPlayer[]
+  questions TrainingQuestion[]
+}
+
+model TrainingPlayer {
+  id              String   @id @default(cuid())
+  trainingId      String
+  training        Training  @relation(fields: [trainingId], references: [id], onDelete: Cascade)
+  playerProfileId String
+  playerProfile   PlayerProfile @relation(fields: [playerProfileId], references: [id], onDelete: Cascade)
+
+  answers TrainingAnswer[]
+
+  @@unique([trainingId, playerProfileId])
+  @@index([trainingId])
+  @@index([playerProfileId])
+}
+
+model TrainingQuestion {
+  id           String       @id @default(cuid())
+  trainingId   String
+  training     Training     @relation(fields: [trainingId], references: [id], onDelete: Cascade)
+  text         String
+  questionType QuestionType @default(RATING_1_10)
+  sortOrder    Int          @default(0)
+
+  answers TrainingAnswer[]
+
+  @@index([trainingId])
+}
+
+model TrainingAnswer {
+  id               String   @id @default(cuid())
+  trainingPlayerId String
+  trainingPlayer   TrainingPlayer @relation(fields: [trainingPlayerId], references: [id], onDelete: Cascade)
+  questionId       String
+  question         TrainingQuestion @relation(fields: [questionId], references: [id], onDelete: Cascade)
+  playerId         String
+  player           User     @relation(fields: [playerId], references: [id], onDelete: Restrict)
+  rating           Int?
+  text             String?
+  createdAt        DateTime @default(now())
+
+  @@index([trainingPlayerId])
+  @@index([playerId])
+  @@index([questionId])
+}
+
+model AlertConfig {
+  id               String   @id @default(cuid())
+  name             String
+  scope            String   @default("ALL")
+  threshold        Int      @default(3)
+  consecutiveCount Int      @default(2)
+  active           Boolean  @default(true)
+  createdAt        DateTime @default(now())
+
+  alerts Alert[]
+}
+
+model Alert {
+  id              String   @id @default(cuid())
+  configId        String
+  config          AlertConfig   @relation(fields: [configId], references: [id], onDelete: Cascade)
+  playerProfileId String
+  playerProfile   PlayerProfile @relation(fields: [playerProfileId], references: [id], onDelete: Cascade)
+  message         String
+  severity        String   @default("WARNING")
+  resolved        Boolean  @default(false)
+  createdAt       DateTime @default(now())
+
+  @@index([playerProfileId])
+  @@index([resolved])
+}

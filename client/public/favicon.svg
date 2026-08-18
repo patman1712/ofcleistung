@@ -1,0 +1,52 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <style>
+      .ofc-red { fill: #E30613; }
+      .ofc-white { fill: #FFFFFF; }
+    </style>
+  </defs>
+  <!-- Äußerer roter Kreisrahmen -->
+  <circle cx="256" cy="256" r="248" fill="#FFFFFF" stroke="#E30613" stroke-width="16"/>
+  <circle cx="256" cy="256" r="224" fill="none" stroke="#E30613" stroke-width="4"/>
+
+  <!-- Flaggenmast -->
+  <path d="M 92 150 Q 90 240 150 310 Q 180 340 170 370 Q 160 395 180 410 Q 200 420 205 395 Q 210 370 195 345 Q 160 305 125 250 Q 115 195 120 150 Z" class="ofc-red"/>
+  <path d="M 100 140 L 104 420" stroke="#E30613" stroke-width="10" stroke-linecap="round"/>
+
+  <!-- Flaggen-Tuch (wellig) -->
+  <path d="M 100 150
+           Q 160 100 220 115
+           Q 280 130 350 110
+           Q 400 95  430 120
+           Q 440 140 425 170
+           Q 400 210 355 230
+           Q 300 250 240 245
+           Q 180 240 100 200 Z"
+        fill="#FFFFFF" stroke="#E30613" stroke-width="6"/>
+
+  <!-- Wellenlinien Text 1: O.F.C. -->
+  <path d="M 120 175 Q 210 140 290 155 Q 360 168 420 145" fill="none" id="wave1"/>
+  <text class="ofc-red" font-family="Impact, 'Arial Black', sans-serif" font-size="52" font-weight="900" letter-spacing="2">
+    <textPath href="#wave1" startOffset="8%">O.F.C.</textPath>
+  </text>
+
+  <!-- Wellenlinien Text 2: KICKERS -->
+  <path d="M 110 215 Q 210 190 290 205 Q 360 218 430 200" fill="none" id="wave2"/>
+  <text class="ofc-red" font-family="Impact, 'Arial Black', sans-serif" font-size="54" font-weight="900" letter-spacing="2">
+    <textPath href="#wave2" startOffset="5%">KICKERS</textPath>
+  </text>
+
+  <!-- Wellenlinien Text 3: 1901 E.V. -->
+  <path d="M 120 260 Q 210 230 290 245 Q 360 258 430 240" fill="none" id="wave3"/>
+  <text class="ofc-red" font-family="Impact, 'Arial Black', sans-serif" font-size="48" font-weight="900" letter-spacing="2">
+    <textPath href="#wave3" startOffset="12%">1901 E.V.</textPath>
+  </text>
+
+  <!-- Fußball-Icon in der Flagge -->
+  <g transform="translate(135 165) scale(0.42)">
+    <circle cx="60" cy="60" r="52" fill="#FFFFFF" stroke="#E30613" stroke-width="6"/>
+    <!-- Fünfecke (rot) -->
+    <polygon points="60,20 76,48 108,48 82,66 92,98 60,80 28,98 38,66 12,48 44,48" fill="#E30613"/>
+  </g>
+</svg>

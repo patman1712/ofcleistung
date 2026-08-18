@@ -1,0 +1,2 @@
+-- Initiale Baseline-Migration für SQLite (erstellt automatisch via "prisma db push")
+-- Diese Datei dient als Referenz; die Struktur wird über prisma/schema.prisma gesteuert
