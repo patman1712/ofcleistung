@@ -8,3 +8,8 @@ data/
 *.db
 *.db-journal
 prisma/dev.db*
+
+# Lokale Backups von Dockerfiles / alte Container-Configs - NIEMALS auf Railway!
+Backup_Deployment_Container.txt
+Dockerfile*
+
