@@ -1,7 +1,6 @@
 import 'dotenv/config';
 import bcrypt from 'bcryptjs';
 import { prisma } from '../src/lib/prisma.js';
-import { Role } from '@prisma/client';
 
 async function main() {
   const adminEmail = 'admin@ofc.de';

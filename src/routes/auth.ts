@@ -3,7 +3,7 @@ import bcrypt from 'bcryptjs';
 import { z } from 'zod';
 import { prisma } from '../lib/prisma.js';
 import { signToken, requireAuth, authMiddleware } from '../middleware/auth.js';
-import { Role } from '@prisma/client';
+import { Role } from '../types.js';
 
 const router = Router();
 

@@ -2,7 +2,7 @@ import { Router } from 'express';
 import { z } from 'zod';
 import { prisma } from '../lib/prisma.js';
 import { requireAdmin, authMiddleware, requireAuth } from '../middleware/auth.js';
-import { QuestionType } from '@prisma/client';
+import { QuestionType } from '../types.js';
 import { addMinutes } from 'date-fns';
 
 const router = Router();
