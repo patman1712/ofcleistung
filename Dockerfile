@@ -66,9 +66,9 @@ RUN npm prune --omit=dev || true \
     # Prisma-Client sicherheitshalber neu erzeugen (passt zu aktueller Node/Arch)
     && npx prisma generate
 
-# Daten-Verzeichnis (Volume auf Railway)
+# Daten-Verzeichnis (Volume auf Railway - wird VIA railway.json gemountet,
+# KEIN VOLUME im Dockerfile! Railway Metal-Builder verbietet VOLUME Anweisung)
 RUN mkdir -p /app/data
-VOLUME ["/app/data"]
 
 EXPOSE 3000
 
