@@ -192,7 +192,7 @@ function DetailView({ detail }: { detail: Detail }) {
           <div className="space-y-4">
             {dailySessions.map((s) => {
               const dayRatings = s.answers.filter((a: any) => a.rating != null).map((a: any) => a.rating as number);
-              const avg = dayRatings.length ? (dayRatings.reduce((a, b) => a + b, 0) / dayRatings.length).toFixed(1) : null;
+              const avg = dayRatings.length ? (dayRatings.reduce((a: number, b: number) => a + b, 0) / dayRatings.length).toFixed(1) : null;
               return (
                 <details key={s.id} className="border border-gray-200 rounded-lg p-3 bg-white open:bg-ofc-gray/30">
                   <summary className="flex items-center justify-between gap-3 cursor-pointer list-none">
