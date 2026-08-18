@@ -1,26 +1,13 @@
 {
-  "$schema": "https://railway.app/railway.schema.json",
   "build": {
     "builder": "NIXPACKS",
-    "nixpacksConfigPath": "nixpacks.toml",
-    "watchPatterns": [
-      "/src/**",
-      "/client/src/**",
-      "/client/index.html",
-      "/prisma/**",
-      "/package.json",
-      "/client/package.json",
-      "/nixpacks.toml",
-      "/tailwind.config.js"
-    ]
+    "nixpacksConfigPath": "nixpacks.toml"
   },
   "deploy": {
     "healthcheckPath": "/api/auth/me",
-    "healthcheckTimeout": 1000,
-    "startCommand": null,
-    "numReplicas": 1,
+    "healthcheckTimeout": 2000,
     "restartPolicyType": "ON_FAILURE",
     "restartPolicyMaxRetries": 5,
-    "sleepApplication": false
+    "numReplicas": 1
   }
 }
