@@ -14,8 +14,8 @@ import alertsRouter from './routes/alerts.js';
 import { authMiddleware } from './middleware/auth.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const PORT = Number(process.env.PORT || 3000);
-const HOST = process.env.HOSTNAME || process.env.HOST || '0.0.0.0';
+const PORT = Number(process.env.PORT || 8080);
+const HOST = '0.0.0.0';
 const app = express();
 
 app.use(
