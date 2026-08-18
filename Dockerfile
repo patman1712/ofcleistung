@@ -1,66 +1,77 @@
 # syntax = docker/dockerfile:1
 
-FROM node:20-alpine AS base
+# OFC Leistungsdiagnostik - Railway Deployments-Image
+# Einfaches, robustes Node 20 (Debian Bookworm/Slim - glibc statt musl)
+# Vermeidet Alpine-Komplikationen mit better-sqlite3 / nativen Modulen.
+
+FROM node:20-bookworm-slim AS build
 WORKDIR /app
-RUN apk add --no-cache python3 make g++
 
-# --- Stage: Dependencies (root + better-sqlite3 build needs python3/make/g++)
-FROM base AS deps
-COPY package.json package-lock.json* ./
-RUN if [ -f package-lock.json ]; then npm ci --build-from-source; else npm install --build-from-source; fi
+# Build-Tools vorhalten (wird für better-sqlite3 ggf. benötigt)
+RUN apt-get update -qq && \
+    apt-get install -y --no-install-recommends \
+        python3 \
+        make \
+        g++ \
+        ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
 
-# --- Stage: Client dependencies
-FROM deps AS client-deps
-COPY client/package.json client/package-lock.json* client/
+# ------------------------------------------------------------------
+# Stufe 1: Root-Dependencies + Prisma + Server bauen
+# ------------------------------------------------------------------
+COPY package*.json ./
+RUN npm install --no-audit --no-fund --build-from-source
+
+COPY prisma ./prisma
+COPY src ./src
+COPY tsconfig.json ./
+RUN npx prisma generate
+RUN npx tsc -p tsconfig.json || { echo "TSC FAILED"; ls -la; exit 1; }
+
+# ------------------------------------------------------------------
+# Stufe 2: Client-Dependencies + Client bauen
+# ------------------------------------------------------------------
+COPY client/package*.json ./client/
 WORKDIR /app/client
-RUN if [ -f package-lock.json ]; then npm ci; else npm install; fi
-
-# --- Stage: Build client
-FROM node:20-alpine AS client-build
+RUN npm install --no-audit --no-fund
 WORKDIR /app
-COPY --from=client-deps /app/node_modules ./node_modules
-COPY --from=client-deps /app/client/node_modules ./client/node_modules
+
 COPY client ./client
-COPY package.json ./
 RUN npm run build:client
 
-# --- Stage: Build server
-FROM base AS server-build
-WORKDIR /app
-COPY --from=deps /app/node_modules ./node_modules
-COPY src ./src
-COPY prisma ./prisma
-COPY tsconfig.json ./
-COPY package.json ./
-RUN npx prisma generate && npx tsc -p tsconfig.json
-
-# --- Runtime
-FROM node:20-alpine AS runner
+# ------------------------------------------------------------------
+# Laufzeit-Stage (schlank)
+# ------------------------------------------------------------------
+FROM node:20-bookworm-slim AS runner
 WORKDIR /app
 ENV NODE_ENV=production
 ENV PORT=3000
-# SQLite DB liegt in /app/data - wird per Railway-Volume gemountet
+ENV HOSTNAME=0.0.0.0
+# SQLite - Default (kann per Railway Variable überschrieben werden)
 ENV DATABASE_URL="file:./data/ofc.db"
 
-RUN addgroup --system --gid 1001 nodejs
-RUN adduser  --system --uid 1001 runner
+# Nur Laufzeit-Dependencies neu aufbauen (cleaner & kleiner)
+COPY package*.json ./
+RUN apt-get update -qq && \
+    apt-get install -y --no-install-recommends python3 make g++ ca-certificates tini && \
+    rm -rf /var/lib/apt/lists/* && \
+    npm install --omit=dev --no-audit --no-fund --build-from-source && \
+    npx prisma generate && \
+    apt-get remove -y python3 make g++ && apt-get autoremove -y || true
 
-COPY --from=deps /app/node_modules ./node_modules
-COPY --from=server-build /app/dist ./dist
-COPY --from=client-build /app/client/dist ./client/dist
-COPY --from=server-build /app/prisma ./prisma
-COPY package.json ./
+# Artefakte aus Build-Stage übernehmen
+COPY --from=build /app/dist ./dist
+COPY --from=build /app/client/dist ./client/dist
+COPY --from=build /app/prisma ./prisma
+COPY --from=build /app/node_modules/.prisma ./node_modules/.prisma 2>/dev/null || true
 
-# Volume-Verzeichnis anlegen (SQLite-DB persistiert hier)
+# Daten-Verzeichnis (SQLite-DB + Railway Volume)
 RUN mkdir -p /app/data
 VOLUME ["/app/data"]
 
-RUN chown -R runner:nodejs /app
-USER runner
-
 EXPOSE 3000
 
-# 1. DB automatisch auf Schema-Stand bringen (db push bei SQLite)
-# 2. Seed ausführen (Admin + Beispielfragen, falls leer)
-# 3. Server starten
-CMD ["sh", "-c", "npm run start:prod"]
+ENTRYPOINT ["/usr/bin/tini", "--"]
+
+# Automatischer Ablauf: DB auf Schema-Stand (push) → Seed (falls leer) → Server
+CMD ["sh", "-c", "mkdir -p data && npx prisma db push --skip-generate && (npm run seed 2>&1 || true) && node dist/server.js"]

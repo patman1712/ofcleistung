@@ -14,7 +14,8 @@ import alertsRouter from './routes/alerts.js';
 import { authMiddleware } from './middleware/auth.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const PORT = process.env.PORT || 3000;
+const PORT = Number(process.env.PORT || 3000);
+const HOST = process.env.HOSTNAME || process.env.HOST || '0.0.0.0';
 const app = express();
 
 app.use(
@@ -41,7 +42,10 @@ app.get(/^\/(?!api).*/, (_req, res) => {
   res.sendFile(path.join(clientDist, 'index.html'));
 });
 
-app.listen(PORT, () => {
-  console.log(`OFC Leistungsdiagnostik läuft auf Port ${PORT}`);
+app.listen(PORT, HOST, () => {
+  console.log(`OFC Leistungsdiagnostik läuft auf http://${HOST}:${PORT}`);
   console.log(`Frontend wird ausgeliefert aus: ${clientDist}`);
+  if (process.env.NODE_ENV === 'production') {
+    console.log(`PID ${process.pid} - NODE_ENV=production`);
+  }
 });
