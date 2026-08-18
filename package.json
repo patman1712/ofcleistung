@@ -9,14 +9,13 @@
     "dev:server": "mkdir -p data && tsx watch src/server.ts",
     "dev:client": "cd client && npm run dev",
     "build:client": "cd client && npm run build",
-    "build": "mkdir -p data && npm run build:client && tsc -p tsconfig.json",
-    "prestart": "mkdir -p data",
-    "start": "node dist/server.js",
+    "build": "npx prisma generate && npm run build:client && tsc -p tsconfig.json",
+    "start": "mkdir -p data && npm run prisma:push && npm run seed || true && node dist/server.js",
     "migrate": "mkdir -p data && prisma migrate deploy",
     "generate": "prisma generate",
     "seed": "mkdir -p data && tsx prisma/seed.ts",
     "prisma:push": "mkdir -p data && prisma db push",
-    "start:prod": "mkdir -p data && npm run prisma:push && npm run seed || true && node dist/server.js"
+    "start:prod": "npm start"
   },
   "dependencies": {
     "@prisma/client": "^5.22.0",
