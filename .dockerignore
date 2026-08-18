@@ -1,12 +1,24 @@
+# .dockerignore - Railway Metal Builder scanned ALLER Dateien (nach Namen UND Inhalt!)
+# Wir lassen IMMER NUR das zu, was wir wirklich brauchen. Alles andere wird ignoriert.
+
+# Standard-Ignore
+.git/
+.gitignore
 node_modules
 dist
 client/dist
-.git
-.gitignore
 .env
-.env.local
-Dockerfile
-.dockerignore
-README.md
+.env.*
+data/
+*.db*
 *.log
+.DS_Store
+README.md
+
+# Alle Backups / lokale Testdateien die nix mit Build zu tun haben
+Backup_*
+backup_*
+*.disabled
+*.bak
+*.old
 .DS_Store
