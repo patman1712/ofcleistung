@@ -3,13 +3,17 @@
   "version": "1.0.0",
   "private": true,
   "type": "module",
+  "engines": {
+    "node": "20.x"
+  },
+  "allowScripts": true,
   "scripts": {
     "install:all": "npm install && cd client && npm install",
     "dev": "concurrently \"npm run dev:server\" \"npm run dev:client\"",
     "dev:server": "mkdir -p data && tsx watch src/server.ts",
     "dev:client": "cd client && npm run dev",
-    "build:client": "cd client && ( [ -d node_modules ] || npm install ) && npm run build",
-    "build": "cd client && npm install && cd .. && npx prisma generate && npm run build:client && npx tsc -p tsconfig.json",
+    "build:client": "cd client && ( [ -d node_modules ] || npm install --config-allow-scripts=true --config-omit= ) && npm run build",
+    "build": "cd client && npm install --config-allow-scripts=true --config-omit= && cd .. && npx prisma generate && npm run build:client && npx tsc -p tsconfig.json",
     "start": "mkdir -p data && npm run prisma:push && npm run seed || true && node dist/server.js",
     "migrate": "mkdir -p data && prisma migrate deploy",
     "generate": "prisma generate",
