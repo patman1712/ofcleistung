@@ -15,6 +15,7 @@ export default function PlayerDashboard() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    let cancelled = false;
     (async () => {
       setLoading(true);
       try {
@@ -22,19 +23,32 @@ export default function PlayerDashboard() {
           api.get('/daily-questions/status/today'),
           api.get('/trainings/open/pending'),
         ]);
-        // History für Spieler via Evaluations-API (nicht öffentlich, also vereinfacht):
-        setStats({
-          dailyAnsweredToday: !!dailyRes.data.answered,
-          completedTodayAt: dailyRes.data.completedAt || null,
-          pendingTrainings: trainRes.data,
-          last7Avg: null,
-          history: [],
-        });
-      } catch (e) {
-        // ignore
+        const dd = dailyRes?.data || {};
+        const td = Array.isArray(trainRes?.data) ? trainRes.data : [];
+        if (!cancelled) {
+          setStats({
+            dailyAnsweredToday: !!dd.answered,
+            completedTodayAt: typeof dd.completedAt === 'string' ? dd.completedAt : null,
+            pendingTrainings: td,
+            last7Avg: null,
+            history: [],
+          });
+        }
+      } catch (e: any) {
+        if (!cancelled) {
+          setStats({
+            dailyAnsweredToday: false,
+            completedTodayAt: null,
+            pendingTrainings: [],
+            last7Avg: null,
+            history: [],
+          });
+        }
+      } finally {
+        if (!cancelled) setLoading(false);
       }
-      setLoading(false);
     })();
+    return () => { cancelled = true; };
   }, []);
 
   return (

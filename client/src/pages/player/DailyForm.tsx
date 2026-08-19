@@ -31,20 +31,40 @@ export default function PlayerDailyForm() {
   const [answers, setAnswers] = useState<Record<string, AnswerRow>>({});
 
   useEffect(() => {
+    let cancelled = false;
     (async () => {
       setLoading(true);
-      const res = await api.get('/daily-questions/status/today');
-      setQuestions(res.data.questions || []);
-      setSessionId(res.data.sessionId || null);
-      setAlreadyAnswered(!!res.data.answered);
-      setCompletedAt(res.data.completedAt || null);
-      const init: Record<string, AnswerRow> = {};
-      for (const q of res.data.questions || []) {
-        init[q.id] = { questionId: q.id, rating: null, text: null };
+      setError(null);
+      try {
+        const res = await api.get('/daily-questions/status/today');
+        const data = res?.data || {};
+        const qs: Q[] = Array.isArray(data.questions) ? data.questions : [];
+        if (!cancelled) {
+          setQuestions(qs);
+          setSessionId(typeof data.sessionId === 'string' ? data.sessionId : null);
+          setAlreadyAnswered(!!data.answered);
+          setCompletedAt(typeof data.completedAt === 'string' ? data.completedAt : null);
+          const init: Record<string, AnswerRow> = {};
+          for (const q of qs) init[q.id] = { questionId: q.id, rating: null, text: null };
+          setAnswers(init);
+        }
+      } catch (err: any) {
+        if (!cancelled) {
+          const msg =
+            err?.response?.data?.error ||
+            err?.message ||
+            'Netzwerkfehler. Bitte Seite neu laden (F5).';
+          setError(msg);
+          setQuestions([]);
+          setAnswers({});
+        }
+      } finally {
+        if (!cancelled) setLoading(false);
       }
-      setAnswers(init);
-      setLoading(false);
     })();
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   const ratingQuestions = useMemo(
@@ -92,11 +112,14 @@ export default function PlayerDailyForm() {
       if (bemerkung.trim().length > 0) {
         const lastText = textQuestions[textQuestions.length - 1];
         if (lastText) {
-          const prev = answers[lastText.id]?.text ?? '';
-          const merged =
-            (prev ? prev + '\n\n' : '') +
-            `--- Allgemeine Bemerkung ---\n${bemerkung.trim()}`;
-          payload.answers.find((x: any) => x.questionId === lastText.id).text = merged;
+          const target = payload.answers.find((x: any) => x.questionId === lastText.id);
+          if (target) {
+            const prev = answers[lastText.id]?.text ?? '';
+            const merged =
+              (prev ? prev + '\n\n' : '') +
+              `--- Allgemeine Bemerkung ---\n${bemerkung.trim()}`;
+            target.text = merged;
+          }
         }
       }
       await api.post('/daily-questions/submit/today', payload);

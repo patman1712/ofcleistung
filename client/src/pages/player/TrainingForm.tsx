@@ -25,16 +25,23 @@ export default function PlayerTrainingForm() {
   const [answers, setAnswers] = useState<Record<string, { questionId: string; rating: number | null; text: string | null }>>({});
 
   useEffect(() => {
+    let cancelled = false;
     (async () => {
       setLoading(true);
+      setError(null);
       try {
         const res = await api.get('/trainings/open/pending');
-        setAllPending(res.data);
-      } catch (e) {
-        setAllPending([]);
+        if (!cancelled) setAllPending(Array.isArray(res?.data) ? res.data : []);
+      } catch (e: any) {
+        if (!cancelled) {
+          setAllPending([]);
+          setError(e?.response?.data?.error || e?.message || 'Netzwerkfehler beim Laden der Trainings.');
+        }
+      } finally {
+        if (!cancelled) setLoading(false);
       }
-      setLoading(false);
     })();
+    return () => { cancelled = true; };
   }, []);
 
   const current = useMemo(
@@ -105,10 +112,13 @@ export default function PlayerTrainingForm() {
       if (bemerkung.trim().length > 0) {
         const lastText = textQs[textQs.length - 1];
         if (lastText) {
-          const prev = answers[lastText.id]?.text ?? '';
-          payload.answers.find((x: any) => x.questionId === lastText.id).text =
-            (prev ? prev + '\n\n' : '') +
-            `--- Allgemeine Bemerkung ---\n${bemerkung.trim()}`;
+          const target = payload.answers.find((x: any) => x.questionId === lastText.id);
+          if (target) {
+            const prev = answers[lastText.id]?.text ?? '';
+            target.text =
+              (prev ? prev + '\n\n' : '') +
+              `--- Allgemeine Bemerkung ---\n${bemerkung.trim()}`;
+          }
         }
       }
       await api.post('/trainings/submit/answers', payload);

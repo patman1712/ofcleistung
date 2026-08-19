@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, Component, ReactNode } from 'react';
 import { Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { useAuth } from './context/AuthContext';
 import Layout from './components/Layout';
@@ -17,6 +17,50 @@ import PlayerProfile from './pages/player/Profile';
 import api from './lib/api';
 
 export type AppRole = 'ADMIN' | 'STAFF' | 'PLAYER';
+
+// ---------------- ERROR BOUNDARY (verhindert White Screen bei uncaught React Errors) ----------------
+class ErrorBoundary extends Component<{ children: ReactNode; pageKey?: string }, { hasError: boolean; error: string }> {
+  state = { hasError: false, error: '' };
+  static getDerivedStateFromError(error: any) {
+    return { hasError: true, error: error?.message || String(error).slice(0, 500) };
+  }
+  componentDidCatch(error: any, info: any) {
+    console.error('[ErrorBoundary] Uncaught React Error:', error, info);
+  }
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div className="min-h-screen bg-gray-50 flex items-center justify-center p-6">
+          <div className="w-full max-w-lg bg-white border-2 border-ofc-red rounded-2xl p-8 shadow-lg">
+            <div className="text-6xl mb-4 text-center">⚠️</div>
+            <h1 className="text-2xl font-bold text-ofc-red mb-2 text-center">Ups! Etwas ist schiefgelaufen</h1>
+            <p className="text-gray-600 mb-4 text-center">
+              Es ist ein unerwarteter Fehler aufgetreten. Bitte lade die Seite neu.
+            </p>
+            <div className="bg-red-50 border border-red-200 rounded-lg p-3 mb-6 text-xs font-mono break-all text-red-800 max-h-48 overflow-y-auto">
+              {this.state.error || 'Unbekannter Fehler'}
+            </div>
+            <div className="flex gap-3 justify-center">
+              <button
+                onClick={() => { this.setState({ hasError: false, error: '' }); window.location.reload(); }}
+                className="bg-ofc-red hover:bg-ofc-redDark text-white font-semibold px-6 py-3 rounded-lg transition-colors"
+              >
+                🔄 Seite neu laden
+              </button>
+              <button
+                onClick={() => this.setState({ hasError: false, error: '' })}
+                className="bg-gray-100 hover:bg-gray-200 text-gray-800 font-semibold px-6 py-3 rounded-lg transition-colors"
+              >
+                ✖️ Fehler schließen
+              </button>
+            </div>
+          </div>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
 
 function ProtectedRoute({
   children,
@@ -50,6 +94,7 @@ function PlayerRouteGuard({ children }: { children: React.ReactNode }) {
   const [redirect, setRedirect] = useState<string | null>(null);
 
   useEffect(() => {
+    let cancelled = false;
     if (!user || user.role !== 'PLAYER') {
       setChecking(false);
       return;
@@ -68,17 +113,23 @@ function PlayerRouteGuard({ children }: { children: React.ReactNode }) {
           api.get('/daily-questions/status/today'),
           api.get('/trainings/open/pending'),
         ]);
-        if (!dailyRes.data.answered && dailyRes.data.questions?.length > 0) {
+        if (cancelled) return;
+        const dailyData = dailyRes?.data || {};
+        const trainData = Array.isArray(trainingRes?.data) ? trainingRes.data : [];
+        if (!dailyData.answered && Array.isArray(dailyData.questions) && dailyData.questions.length > 0) {
           setRedirect('/player/daily');
-        } else if (trainingRes.data?.length > 0) {
-          setRedirect(`/player/training/${trainingRes.data[0].trainingPlayerId}`);
+        } else if (trainData.length > 0 && trainData[0]?.trainingPlayerId) {
+          setRedirect(`/player/training/${trainData[0].trainingPlayerId}`);
         }
-      } catch (e) {
-        // ignore route guard errors - page will still load
+      } catch (e: any) {
+        // Leiser Fehler: Nicht aufhängen, User kann normal weiter navigieren
+        console.warn('[PlayerRouteGuard] Check fehlgeschlagen (ignoriert):', e?.message || e);
       } finally {
-        setChecking(false);
+        if (!cancelled) setChecking(false);
       }
     })();
+
+    return () => { cancelled = true; };
   }, [user, location.pathname]);
 
   if (checking) {
@@ -94,133 +145,147 @@ function PlayerRouteGuard({ children }: { children: React.ReactNode }) {
 
 export default function App() {
   return (
-    <Routes>
-      <Route path="/login" element={<Login />} />
+    <ErrorBoundary pageKey="app-root">
+      <Routes>
+        <Route
+          path="/login"
+          element={
+            <ErrorBoundary pageKey="login"><Login /></ErrorBoundary>
+          }
+        />
 
-      {/* ADMIN + STAFF ROUTES (STAFF kann AUCH alles außer User löschen/Anlegen) */}
-      <Route
-        path="/admin"
-        element={
-          <ProtectedRoute roles={['ADMIN', 'STAFF']}>
-            <Layout>
-              <AdminDashboard />
-            </Layout>
-          </ProtectedRoute>
-        }
-      />
-      <Route
-        path="/admin/players"
-        element={
-          <ProtectedRoute roles={['ADMIN']}>
-            <Layout>
-              <AdminPlayers />
-            </Layout>
-          </ProtectedRoute>
-        }
-      />
-      <Route
-        path="/admin/daily-questions"
-        element={
-          <ProtectedRoute roles={['ADMIN', 'STAFF']}>
-            <Layout>
-              <AdminDailyQuestions />
-            </Layout>
-          </ProtectedRoute>
-        }
-      />
-      <Route
-        path="/admin/trainings"
-        element={
-          <ProtectedRoute roles={['ADMIN', 'STAFF']}>
-            <Layout>
-              <AdminTrainings />
-            </Layout>
-          </ProtectedRoute>
-        }
-      />
-      <Route
-        path="/admin/evaluations"
-        element={
-          <ProtectedRoute roles={['ADMIN', 'STAFF']}>
-            <Layout>
-              <AdminEvaluations />
-            </Layout>
-          </ProtectedRoute>
-        }
-      />
-      <Route
-        path="/admin/alerts"
-        element={
-          <ProtectedRoute roles={['ADMIN', 'STAFF']}>
-            <Layout>
-              <AdminAlerts />
-            </Layout>
-          </ProtectedRoute>
-        }
-      />
-      <Route
-        path="/admin/settings"
-        element={
-          <ProtectedRoute roles={['ADMIN']}>
-            <Layout>
-              <AdminSettings />
-            </Layout>
-          </ProtectedRoute>
-        }
-      />
+        {/* ADMIN + STAFF ROUTES */}
+        <Route
+          path="/admin"
+          element={
+            <ProtectedRoute roles={['ADMIN', 'STAFF']}>
+              <Layout>
+                <ErrorBoundary pageKey="admin-dashboard"><AdminDashboard /></ErrorBoundary>
+              </Layout>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/admin/players"
+          element={
+            <ProtectedRoute roles={['ADMIN']}>
+              <Layout>
+                <ErrorBoundary pageKey="admin-players"><AdminPlayers /></ErrorBoundary>
+              </Layout>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/admin/daily-questions"
+          element={
+            <ProtectedRoute roles={['ADMIN', 'STAFF']}>
+              <Layout>
+                <ErrorBoundary pageKey="admin-daily"><AdminDailyQuestions /></ErrorBoundary>
+              </Layout>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/admin/trainings"
+          element={
+            <ProtectedRoute roles={['ADMIN', 'STAFF']}>
+              <Layout>
+                <ErrorBoundary pageKey="admin-trainings"><AdminTrainings /></ErrorBoundary>
+              </Layout>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/admin/evaluations"
+          element={
+            <ProtectedRoute roles={['ADMIN', 'STAFF']}>
+              <Layout>
+                <ErrorBoundary pageKey="admin-evaluations"><AdminEvaluations /></ErrorBoundary>
+              </Layout>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/admin/alerts"
+          element={
+            <ProtectedRoute roles={['ADMIN', 'STAFF']}>
+              <Layout>
+                <ErrorBoundary pageKey="admin-alerts"><AdminAlerts /></ErrorBoundary>
+              </Layout>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/admin/settings"
+          element={
+            <ProtectedRoute roles={['ADMIN']}>
+              <Layout>
+                <ErrorBoundary pageKey="admin-settings"><AdminSettings /></ErrorBoundary>
+              </Layout>
+            </ProtectedRoute>
+          }
+        />
 
-      {/* PLAYER ROUTES */}
-      <Route
-        path="/player"
-        element={
-          <ProtectedRoute roles={['PLAYER']}>
-            <PlayerRouteGuard>
-              <Layout>
-                <PlayerDashboard />
-              </Layout>
-            </PlayerRouteGuard>
-          </ProtectedRoute>
-        }
-      />
-      <Route
-        path="/player/daily"
-        element={
-          <ProtectedRoute roles={['PLAYER']}>
-            <PlayerRouteGuard>
-              <Layout>
-                <PlayerDailyForm />
-              </Layout>
-            </PlayerRouteGuard>
-          </ProtectedRoute>
-        }
-      />
-      <Route
-        path="/player/training/:tpId"
-        element={
-          <ProtectedRoute roles={['PLAYER']}>
-            <PlayerRouteGuard>
-              <Layout>
-                <PlayerTrainingForm />
-              </Layout>
-            </PlayerRouteGuard>
-          </ProtectedRoute>
-        }
-      />
-      <Route
-        path="/player/profile"
-        element={
-          <ProtectedRoute roles={['PLAYER']}>
-            <PlayerRouteGuard>
-              <Layout>
-                <PlayerProfile />
-              </Layout>
-            </PlayerRouteGuard>
-          </ProtectedRoute>
-        }
-      />
+        {/* PLAYER ROUTES */}
+        <Route
+          path="/player"
+          element={
+            <ProtectedRoute roles={['PLAYER']}>
+              <PlayerRouteGuard>
+                <Layout>
+                  <ErrorBoundary pageKey="player-dashboard"><PlayerDashboard /></ErrorBoundary>
+                </Layout>
+              </PlayerRouteGuard>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/player/daily"
+          element={
+            <ProtectedRoute roles={['PLAYER']}>
+              <PlayerRouteGuard>
+                <Layout>
+                  <ErrorBoundary pageKey="player-daily"><PlayerDailyForm /></ErrorBoundary>
+                </Layout>
+              </PlayerRouteGuard>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/player/training/:tpId"
+          element={
+            <ProtectedRoute roles={['PLAYER']}>
+              <PlayerRouteGuard>
+                <Layout>
+                  <ErrorBoundary pageKey="player-training"><PlayerTrainingForm /></ErrorBoundary>
+                </Layout>
+              </PlayerRouteGuard>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/player/profile"
+          element={
+            <ProtectedRoute roles={['PLAYER']}>
+              <PlayerRouteGuard>
+                <Layout>
+                  <ErrorBoundary pageKey="player-profile"><PlayerProfile /></ErrorBoundary>
+                </Layout>
+              </PlayerRouteGuard>
+            </ProtectedRoute>
+          }
+        />
 
-      <Route path="*" element={<RootRedirect />} />
-    </Routes>
+        <Route
+          path="*"
+          element={
+            <ErrorBoundary pageKey="root-redirect">
+              <RootRedirect />
+            </ErrorBoundary>
+          }
+        />
+      </Routes>
+    </ErrorBoundary>
   );
 }
 
