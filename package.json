@@ -15,7 +15,7 @@
     "dev:client": "cd client && npm run dev",
     "build": "cd client && npm install --config-allow-scripts=true --config-omit= && cd .. && npx prisma generate && npx tsc -p tsconfig.json && cd client && npm run build",
     "build:client": "cd client && npm run build",
-    "start": "mkdir -p data && npm run prisma:push && (npm run seed || true) && node dist/server.js",
+    "start": "mkdir -p prisma/data && node dist/server.js",
     "migrate": "mkdir -p data && prisma migrate deploy",
     "generate": "prisma generate",
     "seed": "mkdir -p data && tsx prisma/seed.ts",

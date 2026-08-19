@@ -96,10 +96,12 @@ export default function AdminSettings() {
         await api.put(`/settings/${key}`, { value: dataUrl });
         setOkMsg(`💾 ${key.toUpperCase()} erfolgreich gespeichert! (Seite neu laden für Vorschau im Header)`);
       } catch (er: any) {
-        setErr(er.response?.data?.error || 'Fehler beim Speichern des Logos');
+        const detail = er?.response?.data?.error || er?.message || String(er || 'Unbekannter Fehler');
+        const status = er?.response?.status;
+        setErr(`❌ Fehler beim Speichern des ${key.toUpperCase()}: ${status ? `HTTP ${status} - ` : ''}${detail}`);
       }
     };
-    reader.onerror = () => setErr('Datei konnte nicht gelesen werden');
+    reader.onerror = () => setErr('Datei konnte nicht gelesen werden (FileReader Error)');
     reader.readAsDataURL(f);
   }
 

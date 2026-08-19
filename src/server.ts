@@ -4,6 +4,8 @@ import cors from 'cors';
 import cookieParser from 'cookie-parser';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import { execSync } from 'child_process';
+import fs from 'fs';
 
 import authRouter from './routes/auth.js';
 import usersRouter from './routes/users.js';
@@ -16,8 +18,44 @@ import settingsRouter from './routes/settings.js';
 import { authMiddleware } from './middleware/auth.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const PROJECT_ROOT = path.resolve(__dirname, '..');
+const DATA_DIR = path.resolve(PROJECT_ROOT, 'prisma', 'data');
 const PORT = Number(process.env.PORT || 8080);
 const HOST = '0.0.0.0';
+
+// Sicherstellen, dass prisma/data existiert (Volume Mount)
+if (!fs.existsSync(DATA_DIR)) {
+  fs.mkdirSync(DATA_DIR, { recursive: true });
+  console.log(`[boot] Created data dir: ${DATA_DIR}`);
+}
+
+// 1) Prisma DB Push (erstellt Setting-Modell + neue Tabellen auf jeden Fall)
+try {
+  console.log('[boot] Running prisma db push ...');
+  execSync('npx prisma db push --skip-generate', {
+    cwd: PROJECT_ROOT,
+    stdio: 'inherit',
+    env: { ...process.env },
+  });
+  console.log('[boot] prisma db push OK ✅');
+} catch (e: any) {
+  console.warn('[boot] prisma db push WARNUNG (weiter gehts trotzdem):', e?.message || e);
+}
+
+// 2) Seed (nur wenn DB frisch ist - auskommentiert aber behalten wir NPM seed fallback bei)
+try {
+  console.log('[boot] Running prisma seed ... (falls noch kein Admin)');
+  execSync('npm run seed', {
+    cwd: PROJECT_ROOT,
+    stdio: 'inherit',
+    env: { ...process.env },
+  });
+  console.log('[boot] prisma seed OK ✅');
+} catch (e: any) {
+  // Seed darf fehlschlagen, falls Admin schon existiert (Unique-Constraint)
+  console.warn('[boot] seed übersprungen (Daten existieren vermutlich schon):', e?.message || String(e).slice(0, 200));
+}
+
 const app = express();
 
 app.use(
@@ -26,7 +64,8 @@ app.use(
     credentials: true,
   }),
 );
-app.use(express.json());
+app.use(express.json({ limit: '10mb' }));
+app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 app.use(cookieParser());
 app.use(authMiddleware);
 
