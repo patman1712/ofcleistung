@@ -9,10 +9,15 @@ const router = Router();
 
 const questionSchema = z.object({
   text: z.string().min(1),
-  questionType: z.enum(['RATING_1_10', 'TEXT']).default('RATING_1_10'),
+  questionType: z.enum(['RATING_1_10', 'RATING', 'TEXT']).default('RATING'),
+  minRating: z.number().int().min(0).max(100).default(1),
+  maxRating: z.number().int().min(1).max(100).default(10),
   sortOrder: z.number().int().min(0).default(0),
   active: z.boolean().default(true),
   repeatTime: z.string().optional().nullable(),
+}).refine((v) => v.maxRating > v.minRating, {
+  message: 'maxRating muss größer als minRating sein',
+  path: ['maxRating'],
 });
 
 // Alle täglichen Fragen (Admin verwaltet, Spieler sieht aktive)
@@ -105,7 +110,7 @@ const answerSchema = z.object({
   answers: z.array(
     z.object({
       questionId: z.string(),
-      rating: z.number().int().min(1).max(10).optional().nullable(),
+      rating: z.number().int().optional().nullable(),
       text: z.string().optional().nullable(),
     }),
   ),
@@ -147,16 +152,36 @@ router.post('/submit/today', authMiddleware, requireAuth, async (req, res) => {
       });
     }
 
+    const isRatingQuestion = (qt: string) => qt === 'RATING_1_10' || qt === 'RATING';
+
     for (const a of body.answers) {
       const q = activeQuestions.find((x) => x.id === a.questionId);
       if (!q) continue;
+      let finalRating: number | null = null;
+      let finalText: string | null = null;
+      if (isRatingQuestion(q.questionType)) {
+        const minR = q.minRating ?? 1;
+        const maxR = q.maxRating ?? 10;
+        if (a.rating == null || Number.isNaN(+a.rating)) {
+          return res.status(400).json({ error: `Bitte Bewertung für Frage "${q.text}" eingeben (${minR} – ${maxR}).` });
+        }
+        if (+a.rating < minR || +a.rating > maxR) {
+          return res.status(400).json({ error: `Bewertung für Frage "${q.text}" muss zwischen ${minR} und ${maxR} liegen.` });
+        }
+        finalRating = +a.rating;
+      } else if (q.questionType === 'TEXT') {
+        if (a.text == null || a.text.toString().trim().length === 0) {
+          return res.status(400).json({ error: `Bitte Text-Frage "${q.text}" beantworten.` });
+        }
+        finalText = a.text.toString();
+      }
       await prisma.dailyAnswer.create({
         data: {
           sessionId: session.id,
           playerId,
           questionId: a.questionId,
-          rating: q.questionType === 'RATING_1_10' ? a.rating ?? null : null,
-          text: q.questionType === 'TEXT' ? a.text ?? null : null,
+          rating: finalRating,
+          text: finalText,
         },
       });
     }

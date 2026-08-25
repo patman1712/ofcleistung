@@ -2,7 +2,7 @@
 // Entsprechen exakt den Werten, die im Prisma-Schema als String modelliert sind.
 
 export type Role = 'ADMIN' | 'STAFF' | 'PLAYER';
-export type QuestionType = 'RATING_1_10' | 'TEXT';
+export type QuestionType = 'RATING_1_10' | 'RATING' | 'TEXT';
 export type AlertScope = 'DAILY' | 'TRAINING' | 'ALL';
 export type AlertSeverity = 'WARNING' | 'CRITICAL';
 
@@ -14,6 +14,7 @@ export const ROLES: { [K in Role]: K } = {
 
 export const QUESTION_TYPES: { [K in QuestionType]: K } = {
   RATING_1_10: 'RATING_1_10',
+  RATING: 'RATING',
   TEXT: 'TEXT',
 };
 
@@ -22,7 +23,7 @@ export function isRole(v: unknown): v is Role {
 }
 
 export function isQuestionType(v: unknown): v is QuestionType {
-  return v === 'RATING_1_10' || v === 'TEXT';
+  return v === 'RATING_1_10' || v === 'RATING' || v === 'TEXT';
 }
 
 export function asString(v: unknown): string | undefined {

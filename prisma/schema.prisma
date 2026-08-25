@@ -52,7 +52,9 @@ model PlayerProfile {
 model DailyQuestion {
   id           String   @id @default(cuid())
   text         String
-  questionType String   @default("RATING_1_10") // "RATING_1_10" | "TEXT"
+  questionType String   @default("RATING_1_10") // "RATING_1_10" | "RATING" | "TEXT"
+  minRating    Int      @default(1)
+  maxRating    Int      @default(10)
   sortOrder    Int      @default(0)
   active       Boolean  @default(true)
   repeatTime   String?  @default("06:00")
@@ -126,7 +128,9 @@ model TrainingQuestion {
   trainingId   String
   training     Training @relation(fields: [trainingId], references: [id], onDelete: Cascade)
   text         String
-  questionType String   @default("RATING_1_10") // "RATING_1_10" | "TEXT"
+  questionType String   @default("RATING_1_10") // "RATING_1_10" | "RATING" | "TEXT"
+  minRating    Int      @default(1)
+  maxRating    Int      @default(10)
   sortOrder    Int      @default(0)
   createdAt    DateTime @default(now())
 

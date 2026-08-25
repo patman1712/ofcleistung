@@ -7,8 +7,10 @@ import api from '../../lib/api';
 interface Q {
   id: string;
   text: string;
-  questionType: 'RATING_1_10' | 'TEXT';
+  questionType: 'RATING_1_10' | 'RATING' | 'TEXT';
   sortOrder: number;
+  minRating?: number | null;
+  maxRating?: number | null;
 }
 interface AnswerRow {
   questionId: string;
@@ -76,8 +78,17 @@ export default function PlayerDailyForm() {
     [questions],
   );
 
+  const isRatingQuestion = (qt: string) => qt === 'RATING_1_10' || qt === 'RATING';
+
   const isFormComplete =
-    ratingQuestions.every((q) => answers[q.id]?.rating != null) &&
+    ratingQuestions.every((q) => {
+      const ans = answers[q.id];
+      if (!ans) return false;
+      if (ans.rating == null) return false;
+      const minR = (q.minRating ?? 1);
+      const maxR = (q.maxRating ?? 10);
+      return +ans.rating >= minR && +ans.rating <= maxR;
+    }) &&
     textQuestions.every((q) => (answers[q.id]?.text ?? '').toString().trim().length > 0);
 
   const setRating = (qid: string, r: number) => {
@@ -188,10 +199,12 @@ export default function PlayerDailyForm() {
                 <h3 className="text-lg font-semibold pt-1">{q.text}</h3>
               </div>
               <div className="pl-11">
-                {q.questionType === 'RATING_1_10' ? (
+                {q.questionType === 'RATING_1_10' || q.questionType === 'RATING' ? (
                   <RatingButtons
                     value={answers[q.id]?.rating ?? null}
                     onChange={(n) => setRating(q.id, n)}
+                    min={q.minRating ?? 1}
+                    max={q.maxRating ?? 10}
                   />
                 ) : (
                   <textarea

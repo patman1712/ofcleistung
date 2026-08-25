@@ -9,7 +9,14 @@ interface PendingTraining {
   title: string;
   scheduledAt: string;
   durationMin: number | null;
-  questions: { id: string; text: string; questionType: 'RATING_1_10' | 'TEXT'; sortOrder: number }[];
+  questions: {
+    id: string;
+    text: string;
+    questionType: 'RATING_1_10' | 'RATING' | 'TEXT';
+    sortOrder: number;
+    minRating?: number | null;
+    maxRating?: number | null;
+  }[];
 }
 
 export default function PlayerTrainingForm() {
@@ -79,10 +86,16 @@ export default function PlayerTrainingForm() {
     );
   }
 
-  const ratingQs = current.questions.filter((q) => q.questionType === 'RATING_1_10');
+  const ratingQs = current.questions.filter((q) => q.questionType === 'RATING_1_10' || q.questionType === 'RATING');
   const textQs = current.questions.filter((q) => q.questionType === 'TEXT');
   const isComplete =
-    ratingQs.every((q) => answers[q.id]?.rating != null) &&
+    ratingQs.every((q) => {
+      const ans = answers[q.id];
+      if (!ans || ans.rating == null) return false;
+      const minR = q.minRating ?? 1;
+      const maxR = q.maxRating ?? 10;
+      return +ans.rating >= minR && +ans.rating <= maxR;
+    }) &&
     textQs.every((q) => (answers[q.id]?.text ?? '').toString().trim().length > 0);
 
   const setRating = (qid: string, r: number) => {
@@ -181,14 +194,16 @@ export default function PlayerTrainingForm() {
               </div>
               <h3 className="text-lg font-semibold pt-1">{q.text}</h3>
               <span className="ml-auto badge-red text-xs">
-                {q.questionType === 'RATING_1_10' ? '1 – 10' : 'Text'}
+                {q.questionType === 'TEXT' ? 'Text' : `${q.minRating ?? 1} – ${q.maxRating ?? 10}`}
               </span>
             </div>
             <div className="pl-11">
-              {q.questionType === 'RATING_1_10' ? (
+              {q.questionType === 'RATING_1_10' || q.questionType === 'RATING' ? (
                 <RatingButtons
                   value={answers[q.id]?.rating ?? null}
                   onChange={(n) => setRating(q.id, n)}
+                  min={q.minRating ?? 1}
+                  max={q.maxRating ?? 10}
                 />
               ) : (
                 <textarea

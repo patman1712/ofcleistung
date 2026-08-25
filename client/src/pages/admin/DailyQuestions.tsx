@@ -2,16 +2,27 @@ import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import api from '../../lib/api';
 
-type QuestionType = 'RATING_1_10' | 'TEXT';
+type QuestionType = 'RATING_1_10' | 'RATING' | 'TEXT';
 
 interface Q {
   id: string;
   text: string;
   questionType: QuestionType;
+  minRating: number;
+  maxRating: number;
   sortOrder: number;
   active: boolean;
   repeatTime: string | null;
 }
+
+const RATING_PRESETS: Array<{ label: string; min: number; max: number; hint?: string }> = [
+  { label: '1 – 3 (Schule/Noten)', min: 1, max: 3, hint: 'sehr gut / gut / befriedigend' },
+  { label: '1 – 5 (Noten)', min: 1, max: 5, hint: '1 sehr gut … 5 mangelhaft' },
+  { label: '0 – 5 (Belastung)', min: 0, max: 5, hint: '0 nichts … 5 maximal' },
+  { label: '1 – 7 (Likert)', min: 1, max: 7, hint: 'psychologische Skala' },
+  { label: '1 – 10 (Standard)', min: 1, max: 10, hint: 'Standard NRS Skala' },
+  { label: '0 – 10 (Schmerz)', min: 0, max: 10, hint: '0 kein Schmerz … 10 extrem' },
+];
 
 export default function AdminDailyQuestions() {
   const [questions, setQuestions] = useState<Q[]>([]);
@@ -20,17 +31,25 @@ export default function AdminDailyQuestions() {
   const [editing, setEditing] = useState<Q | null>(null);
   const [form, setForm] = useState({
     text: '',
-    questionType: 'RATING_1_10' as QuestionType,
+    questionType: 'RATING' as QuestionType,
+    minRating: 1,
+    maxRating: 10,
     sortOrder: 0,
     active: true,
     repeatTime: '06:00',
   });
   const [error, setError] = useState<string | null>(null);
+  const [presetCustom, setPresetCustom] = useState(false);
 
   const load = async () => {
     setLoading(true);
     const res = await api.get('/daily-questions');
-    setQuestions(res.data);
+    const data: any[] = Array.isArray(res?.data) ? res.data : [];
+    setQuestions(data.map((q) => ({
+      ...q,
+      minRating: typeof q.minRating === 'number' ? q.minRating : 1,
+      maxRating: typeof q.maxRating === 'number' ? q.maxRating : 10,
+    })));
     setLoading(false);
   };
 
@@ -39,27 +58,61 @@ export default function AdminDailyQuestions() {
   }, []);
 
   const resetForm = () => {
-    setForm({ text: '', questionType: 'RATING_1_10', sortOrder: questions.length, active: true, repeatTime: '06:00' });
+    setForm({
+      text: '',
+      questionType: 'RATING',
+      minRating: 1,
+      maxRating: 10,
+      sortOrder: questions.length,
+      active: true,
+      repeatTime: '06:00',
+    });
+    setPresetCustom(false);
     setEditing(null);
     setError(null);
   };
 
   const startEdit = (q: Q) => {
     setEditing(q);
+    const qt: QuestionType = q.questionType === 'TEXT' ? 'TEXT' : 'RATING';
     setForm({
       text: q.text,
-      questionType: q.questionType,
+      questionType: qt,
+      minRating: q.minRating ?? 1,
+      maxRating: q.maxRating ?? 10,
       sortOrder: q.sortOrder,
       active: q.active,
       repeatTime: q.repeatTime || '06:00',
     });
+    setPresetCustom(!RATING_PRESETS.some(p => p.min === (q.minRating ?? 1) && p.max === (q.maxRating ?? 10)));
     setShowForm(true);
     setError(null);
   };
 
+  const applyPreset = (min: number, max: number) => {
+    setForm({ ...form, minRating: min, maxRating: max });
+    setPresetCustom(false);
+  };
+
+  const isRating = (t: QuestionType) => t !== 'TEXT';
+
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
+    if (isRating(form.questionType)) {
+      if (!Number.isFinite(+form.minRating) || !Number.isFinite(+form.maxRating)) {
+        setError('Bitte gültige Zahlen für Bewertungsstufen eintragen.');
+        return;
+      }
+      if (+form.maxRating <= +form.minRating) {
+        setError('Maximale Stufe muss größer als die Minimale sein.');
+        return;
+      }
+      if (+form.maxRating - +form.minRating > 99) {
+        setError('Maximal 100 Stufen erlaubt.');
+        return;
+      }
+    }
     try {
       if (editing) {
         await api.put(`/daily-questions/${editing.id}`, form);
@@ -70,12 +123,16 @@ export default function AdminDailyQuestions() {
       setShowForm(false);
       resetForm();
     } catch (err: any) {
-      setError(err?.response?.data?.error || 'Fehler');
+      setErr(err);
     }
   };
 
+  const setErr = (err: any) => {
+    setError(err?.response?.data?.error || err?.message || 'Fehler beim Speichern');
+  };
+
   const remove = async (id: string) => {
-    if (!confirm('Frage wirklich löschen?')) return;
+    if (!confirm('Frage wirklich löschen? Bereits gegebene Antworten bleiben erhalten.')) return;
     await api.delete(`/daily-questions/${id}`);
     await load();
   };
@@ -86,7 +143,7 @@ export default function AdminDailyQuestions() {
         <div>
           <h2 className="text-2xl font-bold text-ofc-grayDark">Tägliche Fragen</h2>
           <p className="text-gray-500 mt-1">
-            Definiere die Fragen, die Spieler jeden Morgen beantworten.
+            Definiere die Fragen, die Spieler jeden Morgen beantworten – Bewertungsskala jetzt <strong className="text-ofc-red">frei wählbar</strong>.
           </p>
         </div>
         <button
@@ -123,8 +180,8 @@ export default function AdminDailyQuestions() {
                 value={form.questionType}
                 onChange={(e) => setForm({ ...form, questionType: e.target.value as QuestionType })}
               >
-                <option value="RATING_1_10">Bewertung 1 – 10</option>
-                <option value="TEXT">Textfeld / Bemerkung</option>
+                <option value="RATING">Bewertung / Zahlen-Skala</option>
+                <option value="TEXT">Textfeld / Freitext-Bemerkung</option>
               </select>
             </div>
             <div>
@@ -137,6 +194,63 @@ export default function AdminDailyQuestions() {
                 onChange={(e) => setForm({ ...form, sortOrder: +e.target.value })}
               />
             </div>
+
+            {isRating(form.questionType) && (
+              <>
+                <div className="md:col-span-2">
+                  <label className="label mb-2">⚡ Bewertungs-Skala (Schnell-Presets)</label>
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 mb-2">
+                    {RATING_PRESETS.map((p) => (
+                      <button
+                        key={`${p.min}-${p.max}-${p.label}`}
+                        type="button"
+                        onClick={() => applyPreset(p.min, p.max)}
+                        className={`text-left px-3 py-2 rounded-lg border transition-all text-sm ${
+                          form.minRating === p.min && form.maxRating === p.max && !presetCustom
+                            ? 'border-ofc-red bg-ofc-red/10 text-ofc-red font-semibold'
+                            : 'border-gray-200 hover:border-ofc-red/50 hover:bg-ofc-red/5'
+                        }`}
+                      >
+                        <div className="font-medium">{p.label}</div>
+                        {p.hint && <div className="text-xs text-gray-500 mt-0.5">{p.hint}</div>}
+                      </button>
+                    ))}
+                    <button
+                      type="button"
+                      onClick={() => setPresetCustom(true)}
+                      className={`text-left px-3 py-2 rounded-lg border transition-all text-sm ${
+                        presetCustom
+                          ? 'border-ofc-red bg-ofc-red/10 text-ofc-red font-semibold'
+                          : 'border-gray-200 hover:border-ofc-red/50 hover:bg-ofc-red/5'
+                      }`}
+                    >
+                      <div className="font-medium">🔧 Freie Skala</div>
+                      <div className="text-xs text-gray-500 mt-0.5">z.B. 2-8, 1-100…</div>
+                    </button>
+                  </div>
+                </div>
+
+                <div>
+                  <label className="label">Von (min. Stufe)</label>
+                  <input
+                    type="number"
+                    className="input"
+                    value={form.minRating}
+                    onChange={(e) => { setPresetCustom(true); setForm({ ...form, minRating: +e.target.value }); }}
+                  />
+                </div>
+                <div>
+                  <label className="label">Bis (max. Stufe)</label>
+                  <input
+                    type="number"
+                    className="input"
+                    value={form.maxRating}
+                    onChange={(e) => { setPresetCustom(true); setForm({ ...form, maxRating: +e.target.value }); }}
+                  />
+                </div>
+              </>
+            )}
+
             <div>
               <label className="label">Wiederholen täglich ab (Lokalzeit)</label>
               <input
@@ -197,7 +311,7 @@ export default function AdminDailyQuestions() {
                       <span className="badge-warning">inaktiv</span>
                     )}
                     <span className="badge-red">
-                      {q.questionType === 'RATING_1_10' ? '1 – 10' : 'Text'}
+                      {q.questionType === 'TEXT' ? 'Text' : `${q.minRating ?? 1} – ${q.maxRating ?? 10}`}
                     </span>
                   </div>
                   <div className="text-xs text-gray-500 mt-1">
