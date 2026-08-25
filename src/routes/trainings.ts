@@ -7,24 +7,42 @@ import { addMinutes } from 'date-fns';
 
 const router = Router();
 
-const questionWithRatingSchema = z.object({
+// --- Basis Schemas (kein Refine!) damit .partial() später auf ZodObject funktioniert ---
+const baseQuestionWithRatingSchema = z.object({
   text: z.string().min(1),
   questionType: z.enum(['RATING_1_10', 'RATING', 'TEXT']).default('RATING'),
   minRating: z.number().int().min(0).max(100).default(1),
   maxRating: z.number().int().min(1).max(100).default(10),
   sortOrder: z.number().int().min(0).default(0),
-}).refine((v) => v.maxRating > v.minRating, {
-  message: 'maxRating muss größer als minRating sein',
-  path: ['maxRating'],
 });
 
-const createTrainingSchema = z.object({
+// Frage-Create Schema mit Refine (max > min)
+const questionCreateSchema = baseQuestionWithRatingSchema.refine(
+  (v) => v.maxRating > v.minRating,
+  { message: 'maxRating muss größer als minRating sein', path: ['maxRating'] },
+);
+
+// Frage-Update Schema (partial) + superRefine wenn beide Rating-Felder gesetzt sind
+const questionUpdateSchema = baseQuestionWithRatingSchema.partial().superRefine((val, ctx) => {
+  if (val.minRating !== undefined && val.maxRating !== undefined) {
+    if (val.maxRating <= val.minRating) {
+      ctx.addIssue({ code: 'custom', path: ['maxRating'], message: 'maxRating muss größer als minRating sein' });
+    }
+  }
+});
+
+// Basis-Training-Schema (ohne Refine, nutzt questionCreateSchema nicht hier als Sub)
+const baseCreateTrainingSchema = z.object({
   title: z.string().min(1),
   scheduledAt: z.string().datetime(),
   durationMin: z.number().int().positive().optional().nullable(),
   playerProfileIds: z.array(z.string()).default([]),
-  questions: z.array(questionWithRatingSchema).default([]),
+  questions: z.array(questionCreateSchema).default([]),
 });
+const createTrainingSchema = baseCreateTrainingSchema; // alias für Klarheit
+
+// Training-Update Schema (partial - ohne nested questions partial ist OK)
+const trainingUpdateSchema = baseCreateTrainingSchema.partial();
 
 // Admin + Staff: Alle Trainings (Spieler sieht nur eigene)
 router.get('/', authMiddleware, requireAuth, async (req, res) => {
@@ -84,7 +102,7 @@ router.post('/', authMiddleware, requireAdmin, async (req, res) => {
 router.put('/:id', authMiddleware, requireAdmin, async (req, res) => {
   try {
     const id = asString(req.params.id)!;
-    const body = createTrainingSchema.partial().parse(req.body);
+    const body = trainingUpdateSchema.parse(req.body);
 
     const updateData: any = {};
     if (body.title) updateData.title = body.title;
@@ -127,7 +145,7 @@ router.delete('/:id', authMiddleware, requireAdmin, async (req, res) => {
 router.post('/:id/questions', authMiddleware, requireAdmin, async (req, res) => {
   try {
     const id = asString(req.params.id)!;
-    const body = questionWithRatingSchema.parse(req.body);
+    const body = questionCreateSchema.parse(req.body);
     const q = await prisma.trainingQuestion.create({
       data: { trainingId: id, ...body } as any,
     });
@@ -141,7 +159,7 @@ router.post('/:id/questions', authMiddleware, requireAdmin, async (req, res) => 
 router.put('/questions/:qid', authMiddleware, requireAdmin, async (req, res) => {
   try {
     const qid = asString(req.params.qid)!;
-    const body = questionWithRatingSchema.partial().parse(req.body);
+    const body = questionUpdateSchema.parse(req.body);
     const q = await prisma.trainingQuestion.update({ where: { id: qid }, data: body as any });
     res.json(q);
   } catch (err: any) {

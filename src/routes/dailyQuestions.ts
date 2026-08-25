@@ -7,7 +7,8 @@ import { startOfDay, format } from 'date-fns';
 
 const router = Router();
 
-const questionSchema = z.object({
+// Basis-Schema (ohne Refine) - .partial() funktioniert nur auf reinen ZodObject!
+const baseQuestionSchema = z.object({
   text: z.string().min(1),
   questionType: z.enum(['RATING_1_10', 'RATING', 'TEXT']).default('RATING'),
   minRating: z.number().int().min(0).max(100).default(1),
@@ -15,10 +16,27 @@ const questionSchema = z.object({
   sortOrder: z.number().int().min(0).default(0),
   active: z.boolean().default(true),
   repeatTime: z.string().optional().nullable(),
-}).refine((v) => v.maxRating > v.minRating, {
-  message: 'maxRating muss größer als minRating sein',
-  path: ['maxRating'],
 });
+
+// Create-Schema mit Runtime-Refine (maxRating > minRating)
+const questionCreateSchema = baseQuestionSchema.refine(
+  (v) => v.maxRating > v.minRating,
+  { message: 'maxRating muss größer als minRating sein', path: ['maxRating'] },
+);
+
+// Update-Schema (partial, ohne Refine ist ok - wir validieren manuell nachher)
+const questionUpdateSchema = baseQuestionSchema.partial().superRefine((val, ctx) => {
+  // Wenn beide (oder nur einer der beiden) Rating-Felder gesetzt sind, prüfe:
+  const minR = val.minRating;
+  const maxR = val.maxRating;
+  if (minR !== undefined && maxR !== undefined) {
+    if (maxR <= minR) {
+      ctx.addIssue({ code: 'custom', path: ['maxRating'], message: 'maxRating muss größer als minRating sein' });
+    }
+  }
+});
+type QuestionCreateInput = z.infer<typeof questionCreateSchema>;
+type QuestionUpdateInput = z.infer<typeof questionUpdateSchema>;
 
 // Alle täglichen Fragen (Admin verwaltet, Spieler sieht aktive)
 router.get('/', authMiddleware, requireAuth, async (req, res) => {
@@ -31,7 +49,7 @@ router.get('/', authMiddleware, requireAuth, async (req, res) => {
 // Admin: Frage anlegen
 router.post('/', authMiddleware, requireAdmin, async (req, res) => {
   try {
-    const data = questionSchema.parse(req.body);
+    const data = questionCreateSchema.parse(req.body);
     const q = await prisma.dailyQuestion.create({ data: data as any });
     res.status(201).json(q);
   } catch (err: any) {
@@ -43,7 +61,7 @@ router.post('/', authMiddleware, requireAdmin, async (req, res) => {
 router.put('/:id', authMiddleware, requireAdmin, async (req, res) => {
   try {
     const id = asString(req.params.id)!;
-    const data = questionSchema.partial().parse(req.body);
+    const data = questionUpdateSchema.parse(req.body);
     const q = await prisma.dailyQuestion.update({ where: { id }, data: data as any });
     res.json(q);
   } catch (err: any) {
