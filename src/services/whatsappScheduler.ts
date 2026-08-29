@@ -1,5 +1,6 @@
-import cron from 'node-cron';
-import { startOfDay, formatInTimeZone, toZonedTime } from 'date-fns-tz';
+import { schedule, ScheduledTask } from 'node-cron';
+import { startOfDay } from 'date-fns';
+import { formatInTimeZone, toZonedTime, fromZonedTime } from 'date-fns-tz';
 import { prisma } from '../lib/prisma.js';
 import {
   loadWAConfig,
@@ -8,8 +9,7 @@ import {
   WhatsAppConfig,
 } from './whatsappService.js';
 
-// Speicher: Ob wir heute schon einen Durchlauf gemacht haben
-// Damit Railway Restart (oft) nicht einen 2. Versand auslöst
+// Anti-Doppel-Versand: Merke sich "welchen Tag" wir zuletzt verarbeitet haben
 let lastRunDateKey: string | null = null;
 
 export async function runDailyReminderCheck(opts: { dryRun?: boolean; force?: boolean } = {}) {
@@ -18,16 +18,22 @@ export async function runDailyReminderCheck(opts: { dryRun?: boolean; force?: bo
     return { skipped: true, reason: 'WhatsApp-Erinnerungen deaktiviert' };
   }
 
-  const todayKey = formatInTimeZone(new Date(), cfg.timezone, 'yyyy-MM-dd');
+  const tz = cfg.timezone || 'Europe/Berlin';
+  const todayKey = formatInTimeZone(new Date(), tz, 'yyyy-MM-dd');
+
   if (!opts.force && lastRunDateKey === todayKey) {
-    return { skipped: true, reason: `Heute (${todayKey}) bereits ausgeführt (Start-Neustart-Schutz)` };
+    return {
+      skipped: true,
+      reason: `Heute (${todayKey}) bereits ausgeführt (Start-Neustart-Schutz)`,
+    };
   }
   lastRunDateKey = todayKey;
 
-  const zonedNow = toZonedTime(new Date(), cfg.timezone);
-  const todayStart = startOfDay(zonedNow);
+  // "Heute Anfang" in der Spieler-Zeitzone → in UTC-Datum umwandeln (für Prisma-Query date-Vergleich)
+  const zonedNow = toZonedTime(new Date(), tz);
+  const zonedTodayStart = startOfDay(zonedNow);
+  const todayUtcDate = fromZonedTime(zonedTodayStart, tz);
 
-  // Alle aktiven Fragen vorberechnen
   const activeQuestions = await prisma.dailyQuestion.findMany({
     where: { active: true },
     select: { id: true },
@@ -36,20 +42,17 @@ export async function runDailyReminderCheck(opts: { dryRun?: boolean; force?: bo
     return { skipped: true, reason: 'Keine aktiven täglichen Fragen – Versand übersprungen.' };
   }
 
-  // Alle Spieler mit Telefonnummer
   const players = await prisma.user.findMany({
     where: { role: 'PLAYER' },
     include: { playerProfile: { select: { id: true, phoneNumber: true } } },
   });
 
-  const results: {
-    id: string;
-    name: string;
-    phone: string;
+  type ResultRow = {
+    id: string; name: string; phone: string;
     status: 'sent' | 'already_done' | 'no_phone' | 'failed';
-    error?: string;
-    sid?: string;
-  }[] = [];
+    error?: string; sid?: string;
+  };
+  const results: ResultRow[] = [];
 
   for (const p of players) {
     const phone = normalizePhone(p.playerProfile?.phoneNumber);
@@ -57,29 +60,23 @@ export async function runDailyReminderCheck(opts: { dryRun?: boolean; force?: bo
       results.push({ id: p.id, name: p.name, phone: '(keine)', status: 'no_phone' });
       continue;
     }
-
     const session = await prisma.dailyAnswerSession.findUnique({
-      where: { playerId_date: { playerId: p.id, date: todayStart } },
+      where: { playerId_date: { playerId: p.id, date: todayUtcDate } },
     });
-
     if (session?.completedAt) {
       results.push({ id: p.id, name: p.name, phone, status: 'already_done' });
       continue;
     }
-
     const msgText = renderTemplate(cfg, p.name);
     if (opts.dryRun) {
       results.push({ id: p.id, name: p.name, phone, status: 'sent', sid: 'dry-run' });
       continue;
     }
-    const res = await sendWhatsApp(cfg, phone, msgText);
+    const r = await sendWhatsApp(cfg, phone, msgText);
     results.push({
-      id: p.id,
-      name: p.name,
-      phone,
-      status: res.ok ? 'sent' : 'failed',
-      sid: res.sid,
-      error: res.error,
+      id: p.id, name: p.name, phone,
+      status: r.ok ? 'sent' : 'failed',
+      sid: r.sid, error: r.error,
     });
   }
 
@@ -94,7 +91,7 @@ export async function runDailyReminderCheck(opts: { dryRun?: boolean; force?: bo
   return {
     dryRun: !!opts.dryRun,
     date: todayKey,
-    timezone: cfg.timezone,
+    timezone: tz,
     config: { enabled: cfg.enabled, time: cfg.time },
     stats,
     results,
@@ -105,8 +102,7 @@ function renderTemplate(cfg: WhatsAppConfig, playerName: string) {
   return (cfg.message || 'Hallo {{name}}!').replace(/\{\{\s*name\s*\}\}/g, playerName);
 }
 
-// Eindeutige Cron-Expression bauen anhand Zeit + Timezone
-// node-cron: "Minute Stunde * * *"
+// node-cron Expression: "Minute Stunde * * *"
 function scheduleExpression(time: string): string | null {
   const m = /^(\d{1,2}):(\d{1,2})$/.exec(time);
   if (!m) return null;
@@ -115,33 +111,36 @@ function scheduleExpression(time: string): string | null {
   return `${mm} ${hh} * * *`;
 }
 
-let _activeTask: cron.ScheduledTask | null = null;
-let _currentTime: string = '';
+let _activeTask: ScheduledTask | null = null;
 
 export function startWhatsAppScheduler() {
   const boot = async () => {
     const cfg = await loadWAConfig();
     const exp = scheduleExpression(cfg.time || '09:00');
+    const tz = cfg.timezone || 'Europe/Berlin';
     if (!cfg.enabled || !exp) {
-      console.log(`[wa-reminder] Scheduler nicht gestartet (enabled=${cfg.enabled}, time="${cfg.time}")`);
+      console.log(
+        `[wa-reminder] Scheduler nicht gestartet (enabled=${cfg.enabled}, time="${cfg.time}")`,
+      );
       return;
     }
     if (_activeTask) {
       _activeTask.stop();
       _activeTask = null;
     }
-    _currentTime = cfg.time;
-    _activeTask = cron.schedule(
-      exp,
-      () => {
-        void runDailyReminderCheck().catch((e) =>
-          console.error('[wa-reminder] Laufzeitfehler:', e?.message || String(e)),
-        );
-      },
-      { scheduled: true, timezone: cfg.timezone },
-    );
+    const options = {
+      scheduled: true,
+      timezone: tz,
+      recoverMissedExecutions: false,
+      name: 'ofc-whatsapp-daily-reminder',
+    } as const;
+    _activeTask = schedule(exp, () => {
+      void runDailyReminderCheck().catch((e) =>
+        console.error('[wa-reminder] Laufzeitfehler:', e?.message || String(e)),
+      );
+    }, options);
     console.log(
-      `[wa-reminder] Scheduler gestartet → Täglich ${cfg.time} (${cfg.timezone}). Expression: ${exp}`,
+      `[wa-reminder] Scheduler gestartet → Täglich ${cfg.time} (${tz}). Expression: ${exp}`,
     );
   };
   void boot();
@@ -152,6 +151,6 @@ export function rescheduleWhatsApp() {
     _activeTask.stop();
     _activeTask = null;
   }
-  lastRunDateKey = null; // Reset: Damit beim nächsten Reschedule ggf. sofort laufen kann
+  lastRunDateKey = null;
   startWhatsAppScheduler();
 }

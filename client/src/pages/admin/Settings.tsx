@@ -557,7 +557,7 @@ export default function AdminSettings() {
 
         {/* Zeile 3: Nachrichtentext */}
         <div>
-          <label className="label">📝 Nachrichtentext (Platzhalter: <code className="bg-gray-100 px-1.5 py-0.5 rounded">{{`{{name}}`}}</code>)</label>
+          <label className="label">📝 Nachrichtentext (Platzhalter: <code className="bg-gray-100 px-1.5 py-0.5 rounded">{'{{name}}'}</code>)</label>
           <textarea
             rows={4}
             className="input font-mono text-sm"
@@ -566,7 +566,7 @@ export default function AdminSettings() {
             placeholder={`Hallo {{name}}! Bitte den täglichen Fragebogen ausfüllen!`}
           />
           <p className="text-xs text-gray-500 mt-1">
-            <code>{`{{name}}`}</code> wird automatisch durch den Namen des Spielers ersetzt.
+            <code>{'{{name}}'}</code> wird automatisch durch den Namen des Spielers ersetzt.
           </p>
         </div>
 
