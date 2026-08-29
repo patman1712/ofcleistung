@@ -183,17 +183,34 @@ async function sendCallMeBot(cfg: WhatsAppConfig, toPhoneRaw: string | null | un
   const to = normalizePhone(toPhoneRaw);
   if (!to) return { provider: 'callmebot', ok: false, error: 'Ungültige Telefonnummer' };
   if (!cfg.callmebotApikey) {
-    return { provider: 'callmebot', ok: false, error: 'CallMeBot: Fehlender APIKey in Einstellungen (CallMeBot Apikey)' };
+    return { provider: 'callmebot', ok: false, error: 'CallMeBot: Fehlender APIKey (CallMeBot Apikey)' };
   }
   try {
     const url = 'https://api.callmebot.com/whatsapp.php';
     const params = new URLSearchParams({ phone: to, text: text.slice(0, 700), apikey: cfg.callmebotApikey });
-    const resp = await axios.get(`${url}?${params.toString()}`, { timeout: 15000 });
-    const body = (resp.data || '').toString();
-    // Erfolgreiche CallMeBot-Antworten enthalten HTML mit "success" oder "Message queued"
-    if (body.toLowerCase().includes('error') || /(\b\d+ errors?\b)/i.test(body) || /(invalid apikey|bad request)/i.test(body)) {
-      return { provider: 'callmebot', ok: false, error: `CallMeBot HTML: ${body.replace(/<[^>]*>/g, ' ').trim().slice(0, 200)}` };
+    const resp = await axios.get(`${url}?${params.toString()}`, { timeout: 15000, validateStatus: () => true });
+    const bodyPlain = (resp.data || '').toString();
+    const body = bodyPlain.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
+
+    // CallMeBot HTML enthält oft eindeutige Phrasen:
+    const success =
+      /(message\s+sent\s+successfully|messages?\s+queued|your\s+message\s+has\s+been\s+sent|sent\s+ok|\bqueued\b)/i.test(body) ||
+      (resp.status === 200 && !/(invalid|error|not\s+allowed|not\s+authorized|not\s+found|failed|wrong|incorrect)/i.test(body));
+
+    const failMatch =
+      body.match(/invalid\s+apikey/i) ||
+      body.match(/apikey\s+not\s+valid/i) ||
+      body.match(/number\s+(is\s+)?not\s+(allowed|authorized|activated|verified)/i) ||
+      body.match(/you\s+need\s+to\s+allow\s+callmebot/i) ||
+      body.match(/send\s+the\s+message.*allow/i);
+
+    if (resp.status >= 400 || failMatch || !success) {
+      const errorMsg = failMatch
+        ? (failMatch[0] + ` (API Key passt NICHT zu dieser Nummer ${to}! Jeder Key gehört zu NUR EINER Handynummer. Sende "I allow callmebot..." von der gewünschten Nummer an +34644672202.)`).slice(0, 300)
+        : body.slice(0, 250) || `HTTP ${resp.status}`;
+      return { provider: 'callmebot', ok: false, error: `CallMeBot: ${errorMsg}` };
     }
+
     return { provider: 'callmebot', ok: true, sid: `callmebot-${Math.random().toString(36).slice(2, 10)}` };
   } catch (e: any) {
     return { provider: 'callmebot', ok: false, error: e?.message || String(e) };

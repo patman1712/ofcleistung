@@ -579,16 +579,22 @@ export default function AdminSettings() {
               <div>
                 <label className="label">🤖 CallMeBot APIKey (6-stellig, Format: 123456)</label>
                 <input className="input font-mono text-sm" placeholder="123456" value={wa.callmebotApikey} onChange={(e) => setWaField('callmebotApikey', e.target.value)} />
+                <div className="p-3 mt-2 rounded-lg bg-red-50 border border-red-200 text-red-900 text-xs space-y-1">
+                  <div><strong>⚠️ WICHTIG!</strong></div>
+                  <div>Der API-Key ist <strong>NUR für DIE EINE NUMMER gültig</strong>, von der du den Join-Text (I allow callmebot...) geschickt hast!</div>
+                  <div>Zum Testen hier unbedingt <strong>genau die gleiche Nummer</strong> eingeben, mit der du den Key erhalten hast!</div>
+                  <div>Für mehrere Spieler: Jeder Spieler muss <strong>SELBST</strong> den Join-Text an CallMeBot schicken und seinen eigenen 6-stelligen Key bekommen → <em>Bei kleinen Mannschaften ({'< 10'} Spieler) ist das trotzdem einfacher als Twilio! Oder für Mannschaften: 5€ Lifetime-Key auf callmebot.com für unbegrenzte Nachrichten an beliebige Nummern!</em></div>
+                </div>
               </div>
               <div className="p-4 rounded-lg bg-green-50 border border-green-200 text-green-900 text-sm space-y-1">
                 <div><strong>✅ CallMeBot Einrichtung (30 Sekunden, FREE TIER: 100 Msg/Monat!):</strong></div>
                 <ol className="list-decimal ml-5 space-y-1">
                   <li>Öffne <a className="underline font-bold" href="https://api.whatsapp.com/send?phone=34644672202&text=I%20allow%20callmebot%20to%20send%20me%20messages" target="_blank" rel="noreferrer">👉 WhatsApp an CallMeBot (+34 644 672 202)</a> - Nachricht ist bereits ausgefüllt!</li>
                   <li>Schicke die Nachricht ab. Sofort bekommst du einen <strong>6-stelligen API-Key</strong> zurück 🎉</li>
-                  <li>Diesen Key in das Feld oben kopieren → 💾 Speichern → direkt Test senden!</li>
+                  <li>Diesen Key in das Feld oben kopieren → 💾 Speichern → direkt Test senden (mit genau DEINER Nummer!)</li>
                 </ol>
                 <div className="pt-2 mt-2 border-t border-green-200/60">
-                  <strong>💰 Upgrade (Empfehlung für Mannschaft):</strong> Einmalig <strong>~5€</strong> via <a href="https://www.callmebot.com/blog/free-api-whatsapp-messages/" target="_blank" rel="noreferrer" className="underline font-bold">callmebot.com</a> → UNENDLICH viele Nachrichten, keine Monatskosten!
+                  <strong>💰 Upgrade (Empfehlung für Mannschaft):</strong> Einmalig <strong>~5€</strong> via <a href="https://www.callmebot.com/blog/free-api-whatsapp-messages/" target="_blank" rel="noreferrer" className="underline font-bold">callmebot.com</a> → <strong>UNENDLICH viele Nachrichten an JEGLICHE Nummer!</strong> (keine 1:1 Nummer-Key Bindung mehr!)
                 </div>
               </div>
             </div>
