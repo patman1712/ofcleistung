@@ -27,7 +27,10 @@ const emptyForm = {
   weightKg: '' as string | number,
   position: '',
   phoneNumber: '',
+  telegramChatId: '',
 };
+
+type FormT = typeof emptyForm;
 
 export default function AdminPlayers() {
   const [players, setPlayers] = useState<PlayerUser[]>([]);
@@ -54,9 +57,15 @@ export default function AdminPlayers() {
     setError(null);
   };
 
-  const startEdit = (p: PlayerUser) => {
+  const startEdit = async (p: PlayerUser) => {
     setEditing(p);
     const pp = p.playerProfile;
+    // Telegram ChatId separat holen
+    let tgChatId = '';
+    try {
+      const res = await api.get(`/settings/whatsapp/telegram/chatid/${p.id}`);
+      tgChatId = res.data?.chatId || '';
+    } catch {/* ok */}
     setForm({
       email: p.email,
       password: '',
@@ -66,6 +75,7 @@ export default function AdminPlayers() {
       weightKg: pp?.weightKg != null ? String(pp.weightKg) : '',
       position: pp?.position ?? '',
       phoneNumber: pp?.phoneNumber ?? '',
+      telegramChatId: tgChatId,
     });
     setShowForm(true);
   };
@@ -86,13 +96,24 @@ export default function AdminPlayers() {
       if (editing) {
         if (form.password) payload.password = form.password;
         await api.put(`/players/${editing.id}`, payload);
+        // Telegram ChatId separat speichern
+        try {
+          if (form.telegramChatId.trim()) {
+            await api.put(`/settings/whatsapp/telegram/chatid/${editing.id}`, { chatId: form.telegramChatId.trim() });
+          }
+        } catch {/* ok */}
       } else {
         if (!form.password || form.password.length < 6) {
           setError('Passwort muss mindestens 6 Zeichen lang sein');
           return;
         }
         payload.password = form.password;
-        await api.post('/players', payload);
+        const created = await api.post('/players', payload);
+        if (form.telegramChatId.trim() && created?.data?.id) {
+          try {
+            await api.put(`/settings/whatsapp/telegram/chatid/${created.data.id}`, { chatId: form.telegramChatId.trim() });
+          } catch {/* ok */}
+        }
       }
       await load();
       setShowForm(false);
@@ -159,14 +180,26 @@ export default function AdminPlayers() {
               <input type="number" step="0.1" min="30" max="150" className="input" value={form.weightKg} onChange={(e) => setForm({ ...form, weightKg: e.target.value })} placeholder="z.B. 75.5" />
             </div>
             <div>
-              <label className="label">📱 Telefonnummer (WhatsApp)</label>
+              <label className="label">📱 Telefonnummer (WhatsApp / SMS Plathalter)</label>
               <input
                 className="input"
                 value={form.phoneNumber}
                 onChange={(e) => setForm({ ...form, phoneNumber: e.target.value })}
-                placeholder="z.B. +49 151 12345678 oder 015112345678"
+                placeholder="z.B. +49 151 12345678"
                 inputMode="tel"
               />
+            </div>
+            <div>
+              <label className="label">✈️ Telegram ChatId (nur bei Telegram-Bot Provider)</label>
+              <input
+                className="input font-mono"
+                value={form.telegramChatId}
+                onChange={(e) => setForm({ ...form, telegramChatId: e.target.value })}
+                placeholder="z.B. 123456789 oder @username"
+              />
+              <p className="text-xs text-gray-500 mt-1">
+                Spieler muss zuerst im Bot auf <code>/start</code> drücken, danach bekommt er seine ChatId.
+              </p>
             </div>
             <div className="md:col-span-2">
               <label className="label">Position</label>

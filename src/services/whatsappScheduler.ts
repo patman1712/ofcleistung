@@ -4,9 +4,10 @@ import { formatInTimeZone, toZonedTime, fromZonedTime } from 'date-fns-tz';
 import { prisma } from '../lib/prisma.js';
 import {
   loadWAConfig,
-  sendWhatsApp,
+  sendReminderMessage,
   normalizePhone,
   WhatsAppConfig,
+  ReminderProvider,
 } from './whatsappService.js';
 
 // Anti-Doppel-Versand: Merke sich "welchen Tag" wir zuletzt verarbeitet haben
@@ -72,7 +73,11 @@ export async function runDailyReminderCheck(opts: { dryRun?: boolean; force?: bo
       results.push({ id: p.id, name: p.name, phone, status: 'sent', sid: 'dry-run' });
       continue;
     }
-    const r = await sendWhatsApp(cfg, phone, msgText);
+    const r = await sendReminderMessage(cfg, {
+      playerId: p.id,
+      phoneRaw: p.playerProfile?.phoneNumber,
+      text: msgText,
+    });
     results.push({
       id: p.id, name: p.name, phone,
       status: r.ok ? 'sent' : 'failed',
