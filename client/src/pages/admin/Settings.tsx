@@ -87,6 +87,8 @@ export default function AdminSettings() {
   const [testResult, setTestResult] = useState<any>(null);
   const [runNowLoading, setRunNowLoading] = useState(false);
   const [runNowResult, setRunNowResult] = useState<any>(null);
+  const [debugLoading, setDebugLoading] = useState(false);
+  const [debugResult, setDebugResult] = useState<any>(null);
 
   async function load() {
     try {
@@ -165,6 +167,22 @@ export default function AdminSettings() {
       setTestResult(e.response?.data || { error: String(e) });
       setErr(e.response?.data?.error || String(e));
     }
+  }
+
+  async function debugWADebugRaw() {
+    setDebugLoading(true); setDebugResult(null); setErr(null); setOkMsg(null);
+    try {
+      const res = await api.post('/settings/whatsapp/debug-send', { to: testTo });
+      setDebugResult(res.data);
+      const guess = Array.isArray(res.data?.guess) ? res.data.guess[0] : null;
+      if (guess) {
+        if (guess.startsWith('✅')) setOkMsg(guess);
+        else setErr(guess);
+      } else setOkMsg('🔍 Debug Ergebnis angezeigt');
+    } catch (e: any) {
+      setDebugResult(e.response?.data || { error: String(e) });
+      setErr(e.response?.data?.error || String(e));
+    } finally { setDebugLoading(false); }
   }
 
   async function runReminderNow(dryRun: boolean) {
@@ -676,9 +694,9 @@ export default function AdminSettings() {
           {/* Test-Nachricht senden */}
           <div className="p-5 border border-gray-200 rounded-xl bg-gray-50/50 space-y-3">
             <h3 className="font-bold text-gray-800 flex items-center gap-2">🧪 Test: Nachricht an Nummer senden</h3>
-            <div className="flex gap-2">
+            <div className="flex gap-2 flex-wrap">
               <input
-                className="input font-mono text-sm"
+                className="input font-mono text-sm flex-1 min-w-[180px]"
                 placeholder={wa.provider === 'telegram' ? 'Telegram ChatId (z.B. 123456789)' : '+49 151 12345678'}
                 value={testTo}
                 onChange={(e) => setTestTo(e.target.value)}
@@ -688,14 +706,37 @@ export default function AdminSettings() {
                 disabled={!testTo}
                 className={`btn-primary ${!testTo ? 'opacity-60 cursor-not-allowed' : ''}`}
               >Senden</button>
+              <button
+                onClick={debugWADebugRaw}
+                disabled={!testTo || debugLoading}
+                className={`btn-secondary ${(!testTo || debugLoading) ? 'opacity-60 cursor-not-allowed' : ''}`}
+              >{debugLoading ? '🔍 Läuft…' : '🔍 Debug (Roh-Antwort)'}</button>
             </div>
             {testResult && (
               <pre className="text-xs bg-gray-900 text-gray-100 p-3 rounded-lg overflow-x-auto whitespace-pre-wrap break-all">
 {JSON.stringify(testResult, null, 2)}
               </pre>
             )}
+            {debugResult && (
+              <div className="space-y-2">
+                <div className="text-xs font-bold text-blue-900 bg-blue-100 border border-blue-200 rounded-lg px-3 py-2">
+                  🔍 <strong>Debug Roh-Ergebnis von Provider (1:1 Original Antwort):</strong>
+                </div>
+                {debugResult.guess && debugResult.guess.length > 0 && (
+                  <div className={`rounded-lg p-3 text-xs border ${debugResult.guess[0]?.startsWith('✅') ? 'bg-green-50 border-green-200 text-green-900' : debugResult.guess[0]?.startsWith('⚠️') ? 'bg-yellow-50 border-yellow-200 text-yellow-900' : 'bg-red-50 border-red-200 text-red-900'}`}>
+                    <div className="font-bold mb-1">🤖 Automatische Analyse:</div>
+                    {debugResult.guess.map((g: string, i: number) => (
+                      <div key={i} className="ml-2">• {g}</div>
+                    ))}
+                  </div>
+                )}
+                <pre className="text-xs bg-blue-950 text-blue-100 p-3 rounded-lg overflow-x-auto whitespace-pre-wrap break-all max-h-72">
+{JSON.stringify(debugResult, null, 2)}
+                </pre>
+              </div>
+            )}
             <p className="text-xs text-gray-500">
-              💡 Tipp: <strong>Creds oben immer erst eintragen + 💾 Speichern</strong>, dann testen!
+              💡 Tipp: <strong>Creds oben immer erst eintragen + 💾 Speichern</strong>, dann testen! Wenn Test OK aber nichts ankommt → <strong>"🔍 Debug (Roh-Antwort)"</strong> klicken!
             </p>
           </div>
 

@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { z } from 'zod';
+import axios from 'axios';
 import { prisma } from '../lib/prisma.js';
 import { requireAdmin, authMiddleware } from '../middleware/auth.js';
 import { asString } from '../types.js';
@@ -115,6 +116,93 @@ router.post('/whatsapp/test-send', authMiddleware, requireAdmin, async (req, res
     res.status(400).json({
       ok: false,
       provider: 'error',
+      error: err.issues ? err.issues.map((i: any) => i.message).join(', ') : err.message,
+    });
+  }
+});
+
+// 🔍 DEBUG: Echter RAW Request an Provider (ohne Error Parsing!) - gibt original HTML/Status/Headers zurück
+router.post('/whatsapp/debug-send', authMiddleware, requireAdmin, async (req, res) => {
+  try {
+    const body = testSchema.parse(req.body);
+    const cfg = await loadWAConfig();
+    const defaultText = `🧪 OFC DEBUG Test ✅\nProvider: ${cfg.provider}`;
+    const text = body.text?.trim() || defaultText;
+    const toRaw = body.to;
+    const to = normalizePhone(toRaw) || toRaw;
+
+    const debug: Record<string, any> = {
+      provider: cfg.provider,
+      inputPhone: toRaw,
+      normalizedPhone: to,
+      normalized: to && to.startsWith('+'),
+      callAt: new Date().toISOString(),
+    };
+
+    if (cfg.provider === 'callmebot') {
+      debug.apikey = (cfg.callmebotApikey || '').slice(0, 3) + '*** (masked)';
+      debug.apikeyLength = (cfg.callmebotApikey || '').length;
+      try {
+        const url = 'https://api.callmebot.com/whatsapp.php';
+        const params = new URLSearchParams({ phone: to, text: text.slice(0, 700), apikey: cfg.callmebotApikey || '' });
+        const fullUrl = `${url}?phone=${encodeURIComponent(to)}&text=<${text.length} chars>&apikey=${(cfg.callmebotApikey || '').slice(0, 3)}***`;
+        debug.request = { method: 'GET', url: fullUrl };
+
+        const startAt = Date.now();
+        const resp = await axios.get(`${url}?${params.toString()}`, {
+          timeout: 20000,
+          validateStatus: () => true,
+          responseType: 'text',
+          transformResponse: [(data) => data],
+        });
+        debug.responseMs = Date.now() - startAt;
+        debug.httpStatus = resp.status;
+        debug.httpStatusText = resp.statusText;
+        debug.responseHeaders = Object.fromEntries(Object.entries(resp.headers || {}).filter(([k]) =>
+          !['date', 'server', 'set-cookie'].includes(k.toLowerCase())
+        ));
+        const bodyRaw = String(resp.data || '');
+        debug.responseBodyRaw = bodyRaw;
+        debug.responseBodyNoHtml = bodyRaw.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 1000);
+        // Heuristiken
+        const noHtmlLow = debug.responseBodyNoHtml.toLowerCase();
+        debug.guess = [];
+        if (noHtmlLow.includes('invalid apikey') || noHtmlLow.includes('apikey not valid') || noHtmlLow.includes('wrong apikey'))
+          debug.guess.push('❌ APIKEY FALSCH: 6-stelliger Key stimmt nicht (falsch abgetippt?)');
+        if (noHtmlLow.match(/number.*not.*(allow|author|activ|verif)|allow.*callmebot|need.*to.*allow/i))
+          debug.guess.push(`❌ NUMMER NICHT FREIGEGEBEN: Key ${cfg.callmebotApikey?.slice(0,3)}*** ist NUR für EINE ANDERE NUMMER gültig! Sende "I allow callmebot..." VON ${to} aus an +34644672202 um DIESER Nummer einen eigenen Key zu holen.`);
+        if (noHtmlLow.match(/limit|exceed|quota|month|100 message/i))
+          debug.guess.push('⚠️ FREE TIER LIMIT ERREICHT (100/Monat). Kaufe Lifetime Upgrade auf callmebot.com für ~5€.');
+        if (noHtmlLow.match(/message.*sent|queued|successfully/i))
+          debug.guess.push('✅ CallMeBot sagt: VERSAND ERFOLGREICH - wenn WhatsApp trotzdem leer bleibt, bei CallMeBot melden oder Nummer auf Blacklist prüfen.');
+        if (debug.guess.length === 0)
+          debug.guess.push('ℹ️ Keine eindeutige Erkennung - bitte "responseBodyNoHtml" aufmerksam lesen!');
+      } catch (e: any) {
+        debug.networkError = e?.message || String(e);
+        debug.guess = ['⚠️ Netzwerkfehler (keine Verbindung zu api.callmebot.com)'];
+      }
+    } else if (cfg.provider === 'telegram') {
+      try {
+        const token = cfg.telegramBotToken || '';
+        const chatId = toRaw;
+        const url = `https://api.telegram.org/bot${token.slice(0, 5)}***.../sendMessage`;
+        debug.request = { method: 'POST', url, chatId };
+        const resp = await axios.post(`https://api.telegram.org/bot${token}/sendMessage`,
+          { chat_id: chatId, text: text, parse_mode: 'HTML' },
+          { timeout: 15000, validateStatus: () => true }
+        );
+        debug.httpStatus = resp.status;
+        debug.responseBody = resp.data;
+        debug.guess = [];
+        if (!resp.data?.ok) debug.guess.push(`❌ Telegram: ${resp.data?.description || 'Error'}. Prüfe: (1) Bot Token korrekt? (2) ChatId ${chatId} richtig? (3) Hat User je /start im Bot gedrückt?`);
+      } catch (e: any) { debug.networkError = e?.message; }
+    } else {
+      debug.guess = [`ℹ️ Debug-Modus für Provider ${cfg.provider} aktuell nur bei CallMeBot/Telegram verfügbar. Nutze "Test senden".`];
+    }
+
+    res.json(debug);
+  } catch (err: any) {
+    res.status(400).json({
       error: err.issues ? err.issues.map((i: any) => i.message).join(', ') : err.message,
     });
   }
