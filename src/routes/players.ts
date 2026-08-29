@@ -15,6 +15,7 @@ const createPlayerSchema = z.object({
   heightCm: z.number().int().positive().optional().nullable(),
   weightKg: z.number().positive().optional().nullable(),
   position: z.string().optional().nullable(),
+  phoneNumber: z.string().optional().nullable(),
 });
 
 // ADMIN: Liste aller Spieler (User mit Rolle PLAYER)
@@ -45,6 +46,7 @@ router.post('/', authMiddleware, requireAdmin, async (req, res) => {
             heightCm: data.heightCm ?? undefined,
             weightKg: data.weightKg ?? undefined,
             position: data.position ?? undefined,
+            phoneNumber: data.phoneNumber ?? undefined,
           },
         },
       },
@@ -75,6 +77,7 @@ router.put('/:id', authMiddleware, requireAdmin, async (req, res) => {
     if (body.heightCm !== undefined) profileUpdate.heightCm = body.heightCm ?? null;
     if (body.weightKg !== undefined) profileUpdate.weightKg = body.weightKg ?? null;
     if (body.position !== undefined) profileUpdate.position = body.position ?? null;
+    if (body.phoneNumber !== undefined) profileUpdate.phoneNumber = body.phoneNumber || null;
 
     const user = await prisma.user.update({
       where: { id },

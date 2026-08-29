@@ -44,6 +44,7 @@ model PlayerProfile {
   heightCm    Int?
   weightKg    Float?
   position    String?
+  phoneNumber String? // Für WhatsApp Reminder (E.164 Format, z.B. +4915112345678)
 
   trainingsAsPlayer TrainingPlayer[]
   alerts            Alert[]

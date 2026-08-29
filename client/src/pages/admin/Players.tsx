@@ -8,6 +8,7 @@ interface PlayerProfile {
   heightCm?: number | null;
   weightKg?: number | string | null;
   position?: string | null;
+  phoneNumber?: string | null;
 }
 interface PlayerUser {
   id: string;
@@ -25,6 +26,7 @@ const emptyForm = {
   heightCm: '' as string | number,
   weightKg: '' as string | number,
   position: '',
+  phoneNumber: '',
 };
 
 export default function AdminPlayers() {
@@ -63,6 +65,7 @@ export default function AdminPlayers() {
       heightCm: pp?.heightCm ?? '',
       weightKg: pp?.weightKg != null ? String(pp.weightKg) : '',
       position: pp?.position ?? '',
+      phoneNumber: pp?.phoneNumber ?? '',
     });
     setShowForm(true);
   };
@@ -78,6 +81,7 @@ export default function AdminPlayers() {
         heightCm: form.heightCm === '' ? null : +form.heightCm,
         weightKg: form.weightKg === '' ? null : +form.weightKg,
         position: form.position || null,
+        phoneNumber: form.phoneNumber?.trim() || null,
       };
       if (editing) {
         if (form.password) payload.password = form.password;
@@ -154,7 +158,17 @@ export default function AdminPlayers() {
               <label className="label">Gewicht (kg)</label>
               <input type="number" step="0.1" min="30" max="150" className="input" value={form.weightKg} onChange={(e) => setForm({ ...form, weightKg: e.target.value })} placeholder="z.B. 75.5" />
             </div>
-            <div className="md:col-span-3">
+            <div>
+              <label className="label">📱 Telefonnummer (WhatsApp)</label>
+              <input
+                className="input"
+                value={form.phoneNumber}
+                onChange={(e) => setForm({ ...form, phoneNumber: e.target.value })}
+                placeholder="z.B. +49 151 12345678 oder 015112345678"
+                inputMode="tel"
+              />
+            </div>
+            <div className="md:col-span-2">
               <label className="label">Position</label>
               <input className="input" value={form.position} onChange={(e) => setForm({ ...form, position: e.target.value })} placeholder="z.B. Mittelfeld, Stürmer, Torwart" />
             </div>
@@ -188,10 +202,9 @@ export default function AdminPlayers() {
               <thead className="bg-ofc-gray text-xs uppercase text-gray-600">
                 <tr>
                   <th className="px-6 py-2 text-left">Name</th>
+                  <th className="px-6 py-2 text-left">📱 WhatsApp</th>
                   <th className="px-6 py-2 text-left">E-Mail</th>
                   <th className="px-6 py-2 text-left">Geburtstag</th>
-                  <th className="px-6 py-2 text-left">Größe</th>
-                  <th className="px-6 py-2 text-left">Gewicht</th>
                   <th className="px-6 py-2 text-left">Position</th>
                   <th className="px-6 py-2 text-right">Aktionen</th>
                 </tr>
@@ -202,12 +215,20 @@ export default function AdminPlayers() {
                   return (
                     <tr key={p.id}>
                       <td className="px-6 py-3 font-semibold">{p.name}</td>
+                      <td className="px-6 py-3 text-gray-600">
+                        {pp?.phoneNumber ? (
+                          <span className="inline-flex items-center gap-1 text-green-700 font-medium">
+                            <span>💬</span>
+                            <span className="font-mono text-xs">{pp.phoneNumber}</span>
+                          </span>
+                        ) : (
+                          <span className="text-gray-400 text-xs italic">– keine –</span>
+                        )}
+                      </td>
                       <td className="px-6 py-3 text-gray-600">{p.email}</td>
                       <td className="px-6 py-3 text-gray-500">
                         {pp?.birthDate ? new Date(pp.birthDate).toLocaleDateString('de-DE') : '–'}
                       </td>
-                      <td className="px-6 py-3 text-gray-500">{pp?.heightCm ? `${pp.heightCm} cm` : '–'}</td>
-                      <td className="px-6 py-3 text-gray-500">{pp?.weightKg ? `${pp.weightKg} kg` : '–'}</td>
                       <td className="px-6 py-3">
                         {pp?.position ? <span className="badge-red">{pp.position}</span> : '–'}
                       </td>

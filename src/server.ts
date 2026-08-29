@@ -16,6 +16,7 @@ import evaluationsRouter from './routes/evaluations.js';
 import alertsRouter from './routes/alerts.js';
 import settingsRouter from './routes/settings.js';
 import { authMiddleware } from './middleware/auth.js';
+import { startWhatsAppScheduler } from './services/whatsappScheduler.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PROJECT_ROOT = path.resolve(__dirname, '..');
@@ -90,5 +91,11 @@ app.listen(PORT, HOST, () => {
   console.log(`Frontend wird ausgeliefert aus: ${clientDist}`);
   if (process.env.NODE_ENV === 'production') {
     console.log(`PID ${process.pid} - NODE_ENV=production`);
+  }
+  // 3) WhatsApp Reminder Scheduler starten (täglich nach DB Push + Seed)
+  try {
+    startWhatsAppScheduler();
+  } catch (e: any) {
+    console.warn('[boot] WhatsApp-Scheduler Warnung (läuft trotzdem weiter:', e?.message || String(e));
   }
 });

@@ -12,6 +12,36 @@ const createUserSchema = z.object({
 });
 type CreateUser = z.infer<typeof createUserSchema>;
 
+const WA_KEYS = {
+  ENABLED: 'wa_enabled',
+  SID: 'wa_accountSid',
+  AUTH: 'wa_authToken',
+  FROM: 'wa_from',
+  TIME: 'wa_time',
+  MESSAGE: 'wa_message',
+  TIMEZONE: 'wa_timezone',
+} as const;
+
+interface WADraft {
+  enabled: boolean;
+  accountSid: string;
+  authToken: string;
+  from: string;
+  time: string;
+  message: string;
+  timezone: string;
+}
+
+const WA_DRAFT_DEFAULT: WADraft = {
+  enabled: false,
+  accountSid: '',
+  authToken: '',
+  from: 'whatsapp:+49151000000000',
+  time: '09:00',
+  message: 'Hallo {{name}}! Bitte nicht vergessen – den täglichen OFC Fragebogen auszufüllen.\nDanke! 💪⚽',
+  timezone: 'Europe/Berlin',
+};
+
 export default function AdminSettings() {
   const [users, setUsers] = useState<any[]>([]);
   const [form, setForm] = useState<CreateUser>({ email: '', name: '', password: '', role: 'STAFF' });
@@ -22,6 +52,14 @@ export default function AdminSettings() {
   const [faviconPreview, setFaviconPreview] = useState<string>('');
   const [appTitle, setAppTitle] = useState('');
   const [appName, setAppName] = useState('');
+
+  const [wa, setWa] = useState<WADraft>(WA_DRAFT_DEFAULT);
+  const [waDirty, setWaDirty] = useState(false);
+  const [waSaving, setWaSaving] = useState(false);
+  const [testTo, setTestTo] = useState('');
+  const [testResult, setTestResult] = useState<any>(null);
+  const [runNowLoading, setRunNowLoading] = useState(false);
+  const [runNowResult, setRunNowResult] = useState<any>(null);
 
   async function load() {
     try {
@@ -36,11 +74,73 @@ export default function AdminSettings() {
       setFaviconPreview(s.favicon || '');
       setAppTitle(s.appTitle || '');
       setAppName(s.appName || '');
+      setWa({
+        enabled: s[WA_KEYS.ENABLED] === 'true',
+        accountSid: s[WA_KEYS.SID] || '',
+        authToken: s[WA_KEYS.AUTH] || '',
+        from: s[WA_KEYS.FROM] || WA_DRAFT_DEFAULT.from,
+        time: s[WA_KEYS.TIME] || WA_DRAFT_DEFAULT.time,
+        message: s[WA_KEYS.MESSAGE] || WA_DRAFT_DEFAULT.message,
+        timezone: s[WA_KEYS.TIMEZONE] || WA_DRAFT_DEFAULT.timezone,
+      });
+      setWaDirty(false);
     } catch (e: any) {
       setErr(e.response?.data?.error || 'Fehler beim Laden der Einstellungen');
     }
   }
   useEffect(() => { load(); }, []);
+
+  const setWaField = <K extends keyof WADraft>(k: K, v: WADraft[K]) => {
+    setWa((prev) => ({ ...prev, [k]: v }));
+    setWaDirty(true);
+  };
+
+  async function saveWAConfig() {
+    setWaSaving(true); setOkMsg(null); setErr(null);
+    try {
+      const values: Record<string, string | boolean> = {
+        [WA_KEYS.ENABLED]: wa.enabled,
+        [WA_KEYS.SID]: wa.accountSid.trim(),
+        [WA_KEYS.AUTH]: wa.authToken.trim(),
+        [WA_KEYS.FROM]: wa.from.trim() || '',
+        [WA_KEYS.TIME]: wa.time,
+        [WA_KEYS.MESSAGE]: wa.message,
+        [WA_KEYS.TIMEZONE]: wa.timezone,
+      };
+      await api.post('/settings/whatsapp/save-bulk', { values });
+      setWaDirty(false);
+      setOkMsg('💾 WhatsApp-Konfiguration gespeichert & Scheduler neu gestartet ✅');
+    } catch (e: any) {
+      setErr(e.response?.data?.error || 'Fehler beim Speichern der WhatsApp-Konfiguration');
+    } finally { setWaSaving(false); }
+  }
+
+  async function sendTestWAMessage() {
+    setErr(null); setOkMsg(null); setTestResult(null);
+    try {
+      const res = await api.post('/settings/whatsapp/test-send', { to: testTo });
+      setTestResult(res.data);
+      if (res.data?.ok) setOkMsg('✅ Test-Nachricht versendet (prüfe WhatsApp!)');
+      else setErr('❌ Test fehlgeschlagen: ' + (res.data?.error || 'unbekannt'));
+    } catch (e: any) {
+      setTestResult(e.response?.data || { error: String(e) });
+      setErr(e.response?.data?.error || String(e));
+    }
+  }
+
+  async function runReminderNow(dryRun: boolean) {
+    setRunNowLoading(true); setRunNowResult(null); setErr(null); setOkMsg(null);
+    try {
+      const res = await api.post('/settings/whatsapp/run-now', { dryRun, force: true });
+      setRunNowResult(res.data);
+      const d = res.data || {};
+      setOkMsg(dryRun
+        ? `📋 Dry-Run: ${d.stats?.sent || 0} "versendet", ${d.stats?.already_done || 0} erledigt, ${d.stats?.no_phone || 0} ohne Nummer, ${d.stats?.failed || 0} Fehler`
+        : `📤 Versendet: ${d.stats?.sent || 0} SMS, ${d.stats?.already_done || 0} schon erledigt, ${d.stats?.failed || 0} Fehler`);
+    } catch (e: any) {
+      setErr(e.response?.data?.error || String(e));
+    } finally { setRunNowLoading(false); }
+  }
 
   async function onAddSubmit(e: any) {
     e.preventDefault();
@@ -358,6 +458,204 @@ export default function AdminSettings() {
 
         <div className="p-4 bg-yellow-50 border border-yellow-200 rounded-lg text-sm text-yellow-800">
           💡 <strong>Hinweis:</strong> Damit Änderungen (neues Logo, Titel) überall sichtbar werden, bitte einmal die Seite komplett neu laden (Strg+F5). Bei Favicon wird der Browser-Cache manchmal erst nach Schließen + Neuöffnen des Tabs aktualisiert.
+        </div>
+      </section>
+
+      {/* SECTION 3: WHATSAPP ERINNERUNGEN */}
+      <section className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6 space-y-6">
+        <div className="flex items-start justify-between flex-wrap gap-3">
+          <div>
+            <h2 className="text-xl font-bold text-gray-800 flex items-center gap-2">
+              💬 WhatsApp-Erinnerungen (täglicher Fragebogen)
+            </h2>
+            <p className="text-gray-600 text-sm mt-1">
+              Spieler erhalten automatisch eine WhatsApp-Nachricht, wenn sie den täglichen Fragebogen bis zu einer festen Uhrzeit <strong>noch nicht</strong> ausgefüllt haben.
+            </p>
+          </div>
+          <label className="inline-flex items-center gap-3 bg-gray-50 rounded-xl px-5 py-3 border border-gray-200">
+            <input
+              type="checkbox"
+              checked={wa.enabled}
+              onChange={(e) => setWaField('enabled', e.target.checked)}
+              className="h-6 w-6 accent-ofc-red cursor-pointer"
+            />
+            <div>
+              <div className="font-bold text-gray-800">{wa.enabled ? '✅ Aktiviert' : '⏸️ Deaktiviert'}</div>
+              <div className="text-xs text-gray-500">Scheduler läuft nur bei Häkchen</div>
+            </div>
+          </label>
+        </div>
+
+        {/* Zeile 1: Twilio Credentials */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div>
+            <label className="label">Twilio Account SID</label>
+            <input
+              className="input font-mono text-sm"
+              placeholder="ACxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+              value={wa.accountSid}
+              onChange={(e) => setWaField('accountSid', e.target.value)}
+            />
+          </div>
+          <div>
+            <label className="label">Twilio Auth Token</label>
+            <input
+              type="password"
+              className="input font-mono text-sm"
+              placeholder="xxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+              value={wa.authToken}
+              onChange={(e) => setWaField('authToken', e.target.value)}
+            />
+          </div>
+          <div>
+            <label className="label">Absender-Nummer (Twilio WhatsApp)</label>
+            <input
+              className="input font-mono text-sm"
+              placeholder="whatsapp:+4915112345678"
+              value={wa.from}
+              onChange={(e) => setWaField('from', e.target.value)}
+            />
+          </div>
+        </div>
+
+        {/* Zeile 2: Zeit + Timezone + Save Button */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div>
+            <label className="label">⏰ Erinnerungszeit (täglich)</label>
+            <input
+              type="time"
+              className="input"
+              value={wa.time}
+              onChange={(e) => setWaField('time', e.target.value)}
+            />
+            <p className="text-xs text-gray-500 mt-1">
+              Beispiel: <code>09:00</code> = jeden Morgen 9 Uhr (Zeitzone unten)
+            </p>
+          </div>
+          <div>
+            <label className="label">🌍 Zeitzone</label>
+            <input
+              className="input font-mono text-sm"
+              value={wa.timezone}
+              onChange={(e) => setWaField('timezone', e.target.value)}
+              placeholder="Europe/Berlin"
+            />
+            <p className="text-xs text-gray-500 mt-1">
+              IANA-Format – Deutschland ist <code>Europe/Berlin</code>
+            </p>
+          </div>
+          <div className="flex flex-col justify-end gap-2">
+            <button
+              onClick={saveWAConfig}
+              disabled={waSaving || !waDirty}
+              className={`btn-primary text-lg py-3 ${(!waDirty || waSaving) ? 'opacity-60 cursor-not-allowed' : ''}`}
+            >
+              {waSaving ? '💾 Speichert…' : waDirty ? '💾 Änderungen speichern & Scheduler neustarten' : '✅ Konfiguration gespeichert'}
+            </button>
+          </div>
+        </div>
+
+        {/* Zeile 3: Nachrichtentext */}
+        <div>
+          <label className="label">📝 Nachrichtentext (Platzhalter: <code className="bg-gray-100 px-1.5 py-0.5 rounded">{{`{{name}}`}}</code>)</label>
+          <textarea
+            rows={4}
+            className="input font-mono text-sm"
+            value={wa.message}
+            onChange={(e) => setWaField('message', e.target.value)}
+            placeholder={`Hallo {{name}}! Bitte den täglichen Fragebogen ausfüllen!`}
+          />
+          <p className="text-xs text-gray-500 mt-1">
+            <code>{`{{name}}`}</code> wird automatisch durch den Namen des Spielers ersetzt.
+          </p>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-4 border-t border-gray-200">
+          {/* Test-Nachricht senden */}
+          <div className="p-5 border border-gray-200 rounded-xl bg-gray-50/50 space-y-3">
+            <h3 className="font-bold text-gray-800 flex items-center gap-2">
+              🧪 Test: WhatsApp an eigene Nummer senden
+            </h3>
+            <div className="flex gap-2">
+              <input
+                className="input font-mono text-sm"
+                placeholder="+49 151 12345678"
+                value={testTo}
+                onChange={(e) => setTestTo(e.target.value)}
+                inputMode="tel"
+              />
+              <button
+                onClick={sendTestWAMessage}
+                disabled={!testTo || !wa.accountSid || !wa.authToken || !wa.from}
+                className={`btn-primary ${(!testTo || !wa.accountSid) ? 'opacity-60 cursor-not-allowed' : ''}`}
+              >
+                Senden
+              </button>
+            </div>
+            {testResult && (
+              <pre className="text-xs bg-gray-900 text-gray-100 p-3 rounded-lg overflow-x-auto">
+{JSON.stringify(testResult, null, 2)}
+              </pre>
+            )}
+            <p className="text-xs text-gray-500">
+              💡 Damit Test-Nachrichten funktionieren: <strong>Creds oben eintragen & Speichern</strong>. Bei Twilio-Sandbox muss die Nummer vorher „gejoined“ sein.
+            </p>
+          </div>
+
+          {/* Jetzt-Run Dry Run / Echt */}
+          <div className="p-5 border border-gray-200 rounded-xl bg-gray-50/50 space-y-3">
+            <h3 className="font-bold text-gray-800 flex items-center gap-2">
+              ▶️ Reminder-Jetzt-Starten (Test &amp; Echt)
+            </h3>
+            <div className="flex gap-2 flex-wrap">
+              <button
+                onClick={() => runReminderNow(true)}
+                className="btn-secondary"
+              >
+                📋 Dry-Run (nur anzeigen – nichts gesendet)
+              </button>
+              <button
+                onClick={() => {
+                  if (!confirm('ECHT-versand: Alle Spieler ohne heutige Antwort bekommen JETZT WhatsApp!\nSicher?')) return;
+                  runReminderNow(false);
+                }}
+                disabled={!wa.enabled || !wa.accountSid || runNowLoading}
+                className={`btn-danger ${(!wa.enabled || runNowLoading) ? 'opacity-60 cursor-not-allowed' : ''}`}
+              >
+                {runNowLoading ? '⏳ Läuft…' : '📤 Echt-Versand starten'}
+              </button>
+            </div>
+            {runNowResult && (
+              <div className="max-h-64 overflow-auto bg-white border border-gray-200 rounded-lg p-3">
+                <div className="text-xs font-mono">
+                  <div className="mb-2 pb-2 border-b border-gray-200 font-bold text-gray-700">
+                    Statistik:
+                    <span className="ml-3 text-green-700">sent: {runNowResult.stats?.sent ?? 0}</span>
+                    <span className="ml-3 text-blue-700">erledigt: {runNowResult.stats?.already_done ?? 0}</span>
+                    <span className="ml-3 text-gray-500">keine#: {runNowResult.stats?.no_phone ?? 0}</span>
+                    <span className="ml-3 text-red-700">fehler: {runNowResult.stats?.failed ?? 0}</span>
+                  </div>
+                  <pre className="whitespace-pre-wrap break-all text-[11px]">
+{JSON.stringify(runNowResult.results ?? runNowResult, null, 2).slice(0, 8000)}
+                  </pre>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+
+        <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg text-sm text-blue-800 space-y-2">
+          <div><strong>💡 Einrichtung Twilio WhatsApp (kostenlos testbar):</strong></div>
+          <ol className="list-decimal ml-5 space-y-1">
+            <li>Account auf <a className="underline font-semibold" href="https://www.twilio.com/try-twilio" target="_blank" rel="noreferrer">twilio.com/try-twilio</a> erstellen</li>
+            <li>In der Twilio-Console: <strong>Develop → Messaging → Try it out → Send a WhatsApp message</strong></li>
+            <li>Sandbox-Nummer (z.B. <code>whatsapp:+14155238886</code>) als Absender eintragen</li>
+            <li>Test-Nummer bei Sandbox anmelden: Twilio sagt, welche Nachricht an die Sandbox gesendet werden muss (z.B. <code>join <i>word</i></code>)</li>
+            <li>SID + Auth Token (Kopfbereich Console) hier eintragen → Speichern → Test senden</li>
+          </ol>
+          <div className="pt-2 mt-2 border-t border-blue-200">
+            <strong>⚠️ Railway Achtung:</strong> Damit der Scheduler <em>zuverlässig</em> läuft: In Railway unter <code>Settings → Sleep Mode</code> den Sleep <strong>ausschalten</strong> (Premium-Plan), sonst schläft die App nach Inaktivität und die tägliche WhatsApp-Nachricht wird nicht ausgelöst.
+          </div>
         </div>
       </section>
     </div>
