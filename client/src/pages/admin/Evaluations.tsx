@@ -1,5 +1,5 @@
-import React, { useEffect, useState } from 'react';
-import { useParams, useNavigate, Link } from 'react-router-dom';
+import React, { useEffect, useState, useMemo } from 'react';
+import { useParams, useNavigate, Link, useSearchParams } from 'react-router-dom';
 import api from '../../lib/api';
 
 interface Detail {
@@ -11,10 +11,16 @@ interface Detail {
 
 export default function AdminEvaluations() {
   const { playerId } = useParams();
+  const [searchParams, setSearchParams] = useSearchParams();
   const nav = useNavigate();
   const [players, setPlayers] = useState<any[]>([]);
   const [detail, setDetail] = useState<Detail | null>(null);
-  const [selectedId, setSelectedId] = useState<string | null>(playerId || null);
+  const initialSelectedId = useMemo(() => {
+    const qp = searchParams.get('playerId');
+    if (qp) return qp;
+    return playerId || null;
+  }, [searchParams, playerId]);
+  const [selectedId, setSelectedId] = useState<string | null>(initialSelectedId);
   const [loading, setLoading] = useState(true);
   const [loadingDetail, setLoadingDetail] = useState(false);
 
@@ -24,9 +30,21 @@ export default function AdminEvaluations() {
       const res = await api.get('/players');
       setPlayers(res.data);
       setLoading(false);
-      if (selectedId) await loadDetail(selectedId);
+      // Auto select first available if not preselected
+      const firstId = res.data?.[0]?.id;
+      const effective = initialSelectedId || firstId;
+      if (effective) {
+        setSelectedId(effective);
+        await loadDetail(effective);
+        // Sync query parameter for shareable links from Dashboard
+        if (!initialSelectedId && firstId) {
+          searchParams.set('playerId', firstId);
+          setSearchParams(searchParams, { replace: true });
+        }
+      }
     })();
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialSelectedId]);
 
   const loadDetail = async (id: string) => {
     setLoadingDetail(true);
@@ -41,7 +59,8 @@ export default function AdminEvaluations() {
 
   const select = (id: string) => {
     setSelectedId(id);
-    nav(`/admin/evaluations`, { replace: true });
+    searchParams.set('playerId', id);
+    setSearchParams(searchParams, { replace: true });
     loadDetail(id);
   };
 
@@ -214,22 +233,54 @@ function DetailView({ detail }: { detail: Detail }) {
                     <span className="text-xs text-gray-500">Details ▾</span>
                   </summary>
                   <div className="mt-3 space-y-3 pl-2">
-                    {s.answers.map((a: any) => (
-                      <div key={a.id} className="bg-white p-3 rounded-lg border border-gray-100">
-                        <div className="text-sm font-medium text-gray-700">{a.question.text}</div>
-                        <div className="mt-1 text-sm">
-                          {a.question.questionType === 'RATING_1_10' ? (
-                            <span className={`font-semibold ${a.rating != null && a.rating <= 4 ? 'text-ofc-red' : a.rating != null && a.rating >= 8 ? 'text-green-600' : ''}`}>
-                              Bewertung: {a.rating ?? '–'}
-                            </span>
-                          ) : (
-                            <div className="whitespace-pre-wrap text-gray-800">
-                              {a.text || <em className="text-gray-400">(leer)</em>}
-                            </div>
-                          )}
+                    {s.answers.map((a: any) => {
+                      const isRatingQ =
+                        a.question.questionType === 'RATING' ||
+                        a.question.questionType === 'RATING_1_10' ||
+                        a.rating != null;
+                      const minR = a.question.minRating ?? 1;
+                      // Schwellwert für ROT: wenn minRating explizit gesetzt (>1) → genau das; sonst Global-Default 5!
+                      const redBelow = minR > 1 ? minR : 5;
+                      const isRed = a.rating != null && a.rating < redBelow;
+                      const isGreen = a.rating != null && a.rating >= 8;
+                      return (
+                        <div
+                          key={a.id}
+                          className="bg-white p-3 rounded-lg border border-gray-100"
+                        >
+                          <div className="text-sm font-medium text-gray-700">
+                            {a.question.text}
+                          </div>
+                          <div className="mt-1 text-sm">
+                            {isRatingQ ? (
+                              a.rating != null ? (
+                                <span
+                                  className={`font-semibold ${
+                                    isRed
+                                      ? 'text-ofc-red'
+                                      : isGreen
+                                      ? 'text-green-600'
+                                      : ''
+                                  }`}
+                                >
+                                  Bewertung: {a.rating}
+                                </span>
+                              ) : (
+                                <span className="font-semibold text-ofc-red italic">
+                                  ⚠️ KEINE Bewertung abgegeben (Pflichtfeld!)
+                                </span>
+                              )
+                            ) : (
+                              <div className="whitespace-pre-wrap text-gray-800">
+                                {a.text || (
+                                  <em className="text-gray-400">(leer)</em>
+                                )}
+                              </div>
+                            )}
+                          </div>
                         </div>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 </details>
               );
@@ -244,30 +295,58 @@ function DetailView({ detail }: { detail: Detail }) {
           <div className="text-sm text-gray-500">Noch keine Trainings-Antworten.</div>
         ) : (
           <div className="divide-y divide-gray-100 -mx-6">
-            {trainingAnswers.map((a: any) => (
-              <div key={a.id} className="px-6 py-3">
-                <div className="flex items-center justify-between flex-wrap gap-2">
-                  <div className="text-sm font-medium">{a.question.text}</div>
-                  <div className="text-xs text-gray-500">
-                    {a.trainingPlayer?.training?.title} ·{' '}
-                    {a.trainingPlayer?.training?.scheduledAt
-                      ? new Date(a.trainingPlayer.training.scheduledAt).toLocaleDateString('de-DE')
-                      : ''}
+            {trainingAnswers.map((a: any) => {
+              const isRatingQ =
+                a.question.questionType === 'RATING' ||
+                a.question.questionType === 'RATING_1_10' ||
+                a.rating != null;
+              const minR = a.question.minRating ?? 1;
+              const redBelow = minR > 1 ? minR : 5;
+              const isRed = a.rating != null && a.rating < redBelow;
+              const isGreen = a.rating != null && a.rating >= 8;
+              return (
+                <div key={a.id} className="px-6 py-3">
+                  <div className="flex items-center justify-between flex-wrap gap-2">
+                    <div className="text-sm font-medium">{a.question.text}</div>
+                    <div className="text-xs text-gray-500">
+                      {a.trainingPlayer?.training?.title} ·{' '}
+                      {a.trainingPlayer?.training?.scheduledAt
+                        ? new Date(
+                            a.trainingPlayer.training.scheduledAt,
+                          ).toLocaleDateString('de-DE')
+                        : ''}
+                    </div>
+                  </div>
+                  <div className="mt-1 text-sm">
+                    {isRatingQ ? (
+                      a.rating != null ? (
+                        <span
+                          className={`font-semibold ${
+                            isRed
+                              ? 'text-ofc-red'
+                              : isGreen
+                              ? 'text-green-600'
+                              : ''
+                          }`}
+                        >
+                          Bewertung: {a.rating}
+                        </span>
+                      ) : (
+                        <span className="font-semibold text-ofc-red italic">
+                          ⚠️ KEINE Bewertung abgegeben (Pflichtfeld!)
+                        </span>
+                      )
+                    ) : (
+                      <div className="whitespace-pre-wrap text-gray-800">
+                        {a.text || (
+                          <em className="text-gray-400">(leer)</em>
+                        )}
+                      </div>
+                    )}
                   </div>
                 </div>
-                <div className="mt-1 text-sm">
-                  {a.question.questionType === 'RATING_1_10' ? (
-                    <span className={`font-semibold ${a.rating != null && a.rating <= 4 ? 'text-ofc-red' : a.rating != null && a.rating >= 8 ? 'text-green-600' : ''}`}>
-                      {a.rating ?? '–'}
-                    </span>
-                  ) : (
-                    <div className="whitespace-pre-wrap text-gray-800">
-                      {a.text || <em className="text-gray-400">(leer)</em>}
-                    </div>
-                  )}
-                </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         )}
       </div>

@@ -70,7 +70,10 @@ export default function PlayerDailyForm() {
   }, []);
 
   const ratingQuestions = useMemo(
-    () => questions.filter((q) => q.questionType === 'RATING_1_10'),
+    () =>
+      questions.filter(
+        (q) => q.questionType === 'RATING' || q.questionType === 'RATING_1_10',
+      ),
     [questions],
   );
   const textQuestions = useMemo(

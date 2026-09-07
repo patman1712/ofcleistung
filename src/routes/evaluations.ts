@@ -33,7 +33,7 @@ router.get('/overview', authMiddleware, requireAdminOrStaff, async (req, res) =>
     const weekAgo = subDays(startOfDay(new Date()), 7);
     const dailySessions = await prisma.dailyAnswerSession.findMany({
       where: { playerId: p.id, date: { gte: weekAgo } },
-      include: { answers: true },
+      include: { answers: { include: { question: true } } },
       orderBy: { date: 'desc' },
     });
     const allDailyRatings = dailySessions.flatMap((s) =>
@@ -67,6 +67,21 @@ router.get('/overview', authMiddleware, requireAdminOrStaff, async (req, res) =>
       lastDailyCompletedAt: latestCompletedSession?.completedAt ?? null,
       todayCompletedAt: todayCompletedSession?.completedAt ?? null,
       completedToday: todayCompletedSession != null,
+      todayDailyAnswers:
+        todayCompletedSession
+          ? todayCompletedSession.answers.map((ans) => ({
+              id: ans.id,
+              rating: ans.rating,
+              text: ans.text,
+              question: {
+                id: ans.question.id,
+                text: ans.question.text,
+                questionType: ans.question.questionType,
+                minRating: ans.question.minRating,
+                maxRating: ans.question.maxRating,
+              },
+            }))
+          : [],
     });
   }
   res.json(result);
