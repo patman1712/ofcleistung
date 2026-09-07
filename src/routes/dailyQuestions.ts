@@ -106,12 +106,37 @@ router.get('/status/today', authMiddleware, requireAuth, async (req, res) => {
       sessionId: null,
     });
   }
+  // Alt-Daten Migration on the fly: Extrahiere Allgemeine Bemerkung aus Answer-Texten nach session.remarks
+  let remarksFinal = session.remarks;
+  let shouldUpdateRemarks = false;
+  if (!remarksFinal) {
+    for (const ans of session.answers) {
+      const t = ans.text ?? '';
+      const marker = '--- Allgemeine Bemerkung ---';
+      const idx = t.indexOf(marker);
+      if (idx >= 0) {
+        const ext = t.slice(idx + marker.length).trim();
+        if (ext.length > 0) {
+          remarksFinal = ext;
+          shouldUpdateRemarks = true;
+        }
+        break;
+      }
+    }
+  }
+  if (shouldUpdateRemarks && remarksFinal) {
+    await prisma.dailyAnswerSession.update({
+      where: { id: session.id },
+      data: { remarks: remarksFinal },
+    });
+  }
   if (session.completedAt) {
     return res.json({
       answered: true,
       questions: activeQuestions,
       sessionId: session.id,
       completedAt: session.completedAt,
+      remarks: remarksFinal ?? null,
     });
   }
   // offen / teilweise beantwortet
@@ -121,11 +146,13 @@ router.get('/status/today', authMiddleware, requireAuth, async (req, res) => {
     questions: activeQuestions,
     sessionId: session.id,
     answers: session.answers,
+    remarks: remarksFinal ?? null,
   });
 });
 
 const answerSchema = z.object({
   sessionId: z.string().optional().nullable(),
+  remarks: z.string().max(5000).optional().nullable(),
   answers: z.array(
     z.object({
       questionId: z.string(),
@@ -146,6 +173,28 @@ router.post('/submit/today', authMiddleware, requireAuth, async (req, res) => {
       where: { active: true },
     });
 
+    // Alt-Daten Migration: Wenn eine Antwort den Header `--- Allgemeine Bemerkung ---` enthält,
+    // dann extrahieren wir die Bemerkung automatisch nach remarks und säubern den Text!
+    let extractedRemarksFromAnswers: string | null = null;
+    for (const a of body.answers) {
+      const t = a.text?.toString() ?? '';
+      const marker = '--- Allgemeine Bemerkung ---';
+      const idx = t.indexOf(marker);
+      if (idx >= 0) {
+        const extracted = t.slice(idx + marker.length).trim();
+        if (extracted.length > 0) {
+          extractedRemarksFromAnswers = extractedRemarksFromAnswers
+            ? `${extractedRemarksFromAnswers}\n\n${extracted}`
+            : extracted;
+        }
+        a.text = t.slice(0, idx).trim() || null;
+      }
+    }
+    const finalRemarks =
+      body.remarks?.toString().trim().length! > 0
+        ? body.remarks.toString().trim()
+        : extractedRemarksFromAnswers;
+
     const session = await prisma.dailyAnswerSession.upsert({
       where: {
         playerId_date: {
@@ -157,9 +206,11 @@ router.post('/submit/today', authMiddleware, requireAuth, async (req, res) => {
         playerId,
         date: today,
         completedAt: new Date(),
+        remarks: finalRemarks || undefined,
       },
       update: {
         completedAt: new Date(),
+        remarks: finalRemarks || null,
       },
       include: { answers: true },
     });

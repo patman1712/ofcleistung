@@ -19,6 +19,57 @@ function isTodayInTz(date: Date | null | undefined): boolean {
 
 const router = Router();
 
+// Helper: Extrahiert Bemerkungen IMMER aus Alt-Daten (Antworten mit --- Allgemeine Bemerkung --- Header)
+// UND kombiniert mit session.remarks / trainingPlayer.remarks → Immer einheitlich remarks string|null!
+function normalizeDailySessionRemarks(session: any): string | null {
+  const final: string[] = [];
+  if (typeof session.remarks === 'string' && session.remarks.trim().length > 0) {
+    final.push(session.remarks.trim());
+  }
+  // Alt-Daten Migration on-the-fly (ohne DB zu schreiben, direkt für die Response!)
+  for (const ans of session.answers || []) {
+    const t = typeof ans.text === 'string' ? ans.text : '';
+    const marker = '--- Allgemeine Bemerkung ---';
+    const idx = t.indexOf(marker);
+    if (idx >= 0) {
+      const extracted = t.slice(idx + marker.length).trim();
+      if (extracted.length > 0) final.push(extracted);
+    }
+  }
+  if (final.length === 0) return null;
+  return final.join('\n\n');
+}
+
+function normalizeTrainingPlayerRemarks(tp: any, answers?: any[]): string | null {
+  const final: string[] = [];
+  if (typeof tp?.remarks === 'string' && tp.remarks.trim().length > 0) {
+    final.push(tp.remarks.trim());
+  }
+  for (const ans of answers || []) {
+    const t = typeof ans.text === 'string' ? ans.text : '';
+    const marker = '--- Allgemeine Bemerkung ---';
+    const idx = t.indexOf(marker);
+    if (idx >= 0) {
+      const extracted = t.slice(idx + marker.length).trim();
+      if (extracted.length > 0) final.push(extracted);
+    }
+  }
+  if (final.length === 0) return null;
+  return final.join('\n\n');
+}
+
+// Helper: Wenn Alt-Daten in Antwort-Texten den Marker haben,
+// den Marker AUS der Antwort entfernen (UI soll Text nicht doppelt zeigen!)
+function filterRemarksFromAnswerText(ans: any): string | null {
+  const t = typeof ans.text === 'string' ? ans.text : null;
+  if (!t) return t;
+  const marker = '--- Allgemeine Bemerkung ---';
+  const idx = t.indexOf(marker);
+  if (idx < 0) return t;
+  const before = t.slice(0, idx).trim();
+  return before.length > 0 ? before : null;
+}
+
 // Admin + Staff: Übersicht mit allen Spielern + aktuellen Werten
 router.get('/overview', authMiddleware, requireAdminOrStaff, async (req, res) => {
   const players = await prisma.user.findMany({
@@ -58,6 +109,9 @@ router.get('/overview', authMiddleware, requireAdminOrStaff, async (req, res) =>
         s.completedAt != null &&
         (isTodayInTz(s.date) || isTodayInTz(s.completedAt)),
     );
+    const todayRemarks = todayCompletedSession
+      ? normalizeDailySessionRemarks(todayCompletedSession)
+      : null;
     const latestCompletedSession = dailySessions.find((s) => s.completedAt);
 
     result.push({
@@ -67,12 +121,13 @@ router.get('/overview', authMiddleware, requireAdminOrStaff, async (req, res) =>
       lastDailyCompletedAt: latestCompletedSession?.completedAt ?? null,
       todayCompletedAt: todayCompletedSession?.completedAt ?? null,
       completedToday: todayCompletedSession != null,
+      todayRemarks,
       todayDailyAnswers:
         todayCompletedSession
           ? todayCompletedSession.answers.map((ans) => ({
               id: ans.id,
               rating: ans.rating,
-              text: ans.text,
+              text: filterRemarksFromAnswerText(ans),
               question: {
                 id: ans.question.id,
                 text: ans.question.text,
@@ -103,7 +158,7 @@ router.get('/player/:playerId', authMiddleware, requireAdminOrStaff, async (req,
     take: 30,
   });
 
-  const trainingAnswers = await prisma.trainingAnswer.findMany({
+  const trainingAnswersRaw = await prisma.trainingAnswer.findMany({
     where: { playerId: playerId },
     include: {
       question: true,
@@ -117,6 +172,69 @@ router.get('/player/:playerId', authMiddleware, requireAdminOrStaff, async (req,
     take: 100,
   });
 
+  // TrainingPlayer Entitäten für remarks + Alt Extrakt (mappen auf trainingPlayerId!)
+  const tpIds = new Set<string>();
+  for (const ta of trainingAnswersRaw) {
+    if (ta.trainingPlayerId) tpIds.add(ta.trainingPlayerId);
+  }
+  const tpList = tpIds.size
+    ? await prisma.trainingPlayer.findMany({
+        where: { id: { in: Array.from(tpIds) } },
+        include: { answers: true },
+      })
+    : [];
+  const tpMap = new Map<string, any>();
+  for (const tp of tpList) {
+    tpMap.set(tp.id, {
+      remarks: normalizeTrainingPlayerRemarks(tp, tp.answers || []),
+    });
+  }
+
+  // Daily Sessions: remarks + answer Text Bereinigen (Alt Marker entfernen)
+  const cleanDailySessions = dailySessions.map((s) => {
+    const remarks = normalizeDailySessionRemarks(s);
+    return {
+      id: s.id,
+      date: s.date,
+      completedAt: s.completedAt,
+      remarks,
+      answers: s.answers.map((a) => ({
+        id: a.id,
+        rating: a.rating,
+        text: filterRemarksFromAnswerText(a),
+        question: {
+          id: (a as any).question?.id,
+          text: (a as any).question?.text,
+          questionType: (a as any).question?.questionType,
+          minRating: (a as any).question?.minRating,
+          maxRating: (a as any).question?.maxRating,
+        },
+      })),
+    };
+  });
+
+  // Training Answers: Bereinigen + remarks pro tpId hinzufügen
+  const cleanTrainingAnswers = trainingAnswersRaw.map((a) => ({
+    id: a.id,
+    rating: a.rating,
+    text: filterRemarksFromAnswerText(a),
+    createdAt: a.createdAt,
+    question: {
+      id: (a as any).question?.id,
+      text: (a as any).question?.text,
+      questionType: (a as any).question?.questionType,
+      minRating: (a as any).question?.minRating,
+      maxRating: (a as any).question?.maxRating,
+    },
+    trainingPlayerId: a.trainingPlayerId,
+    trainingPlayer: {
+      id: (a as any).trainingPlayer?.id,
+      remarks: tpMap.get(a.trainingPlayerId)?.remarks ?? null,
+      training: (a as any).trainingPlayer?.training,
+    },
+    playerId: a.playerId,
+  }));
+
   const userAny = user as any;
   const alerts = await prisma.alert.findMany({
     where: { playerProfileId: userAny.playerProfile?.id },
@@ -127,8 +245,8 @@ router.get('/player/:playerId', authMiddleware, requireAdminOrStaff, async (req,
 
   res.json({
     user,
-    dailySessions,
-    trainingAnswers,
+    dailySessions: cleanDailySessions,
+    trainingAnswers: cleanTrainingAnswers,
     alerts,
   });
 });

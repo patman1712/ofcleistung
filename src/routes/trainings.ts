@@ -219,6 +219,7 @@ router.get('/open/pending', authMiddleware, requireAuth, async (req, res) => {
 
 const trainingAnswerSchema = z.object({
   trainingPlayerId: z.string(),
+  remarks: z.string().max(5000).optional().nullable(),
   answers: z.array(
     z.object({
       questionId: z.string(),
@@ -234,11 +235,39 @@ router.post('/submit/answers', authMiddleware, requireAuth, async (req, res) => 
     const playerId = req.auth!.userId;
     const body = trainingAnswerSchema.parse(req.body);
 
+    // Alt-Daten Migration: Allgemeine Bemerkung aus Text-Antworten extrahieren
+    let extractedRemarksFromAnswers: string | null = null;
+    for (const a of body.answers) {
+      const t = a.text?.toString() ?? '';
+      const marker = '--- Allgemeine Bemerkung ---';
+      const idx = t.indexOf(marker);
+      if (idx >= 0) {
+        const extracted = t.slice(idx + marker.length).trim();
+        if (extracted.length > 0) {
+          extractedRemarksFromAnswers = extractedRemarksFromAnswers
+            ? `${extractedRemarksFromAnswers}\n\n${extracted}`
+            : extracted;
+        }
+        a.text = t.slice(0, idx).trim() || null;
+      }
+    }
+    const finalRemarks =
+      body.remarks?.toString().trim().length! > 0
+        ? body.remarks.toString().trim()
+        : extractedRemarksFromAnswers;
+
     const tp = await prisma.trainingPlayer.findUnique({
       where: { id: body.trainingPlayerId },
       include: { training: { include: { questions: true } } },
     });
     if (!tp) return res.status(404).json({ error: 'Nicht gefunden' });
+
+    if (finalRemarks != null) {
+      await prisma.trainingPlayer.update({
+        where: { id: tp.id },
+        data: { remarks: finalRemarks },
+      });
+    }
 
     const profile = await prisma.playerProfile.findUnique({ where: { userId: playerId } });
     if (!profile || tp.playerProfileId !== profile.id) {

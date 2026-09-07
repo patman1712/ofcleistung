@@ -116,24 +116,13 @@ export default function PlayerTrainingForm() {
     try {
       const payload: any = {
         trainingPlayerId: current.trainingPlayerId,
+        remarks: bemerkung.trim().length > 0 ? bemerkung.trim() : null,
         answers: Object.values(answers).map((a) => ({
           questionId: a.questionId,
           rating: a.rating,
           text: a.text,
         })),
       };
-      if (bemerkung.trim().length > 0) {
-        const lastText = textQs[textQs.length - 1];
-        if (lastText) {
-          const target = payload.answers.find((x: any) => x.questionId === lastText.id);
-          if (target) {
-            const prev = answers[lastText.id]?.text ?? '';
-            target.text =
-              (prev ? prev + '\n\n' : '') +
-              `--- Allgemeine Bemerkung ---\n${bemerkung.trim()}`;
-          }
-        }
-      }
       await api.post('/trainings/submit/answers', payload);
       setDone(true);
       if (nextPending) {

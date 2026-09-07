@@ -9,6 +9,7 @@ interface OverviewItem {
   lastDailyCompletedAt: string | null;
   todayCompletedAt: string | null;
   completedToday: boolean;
+  todayRemarks: string | null;
   todayDailyAnswers: Array<{
     id: string;
     rating: number | null;
@@ -208,8 +209,8 @@ export default function AdminDashboard() {
                                     : '🔔 Spieler hat den heutigen Fragebogen NOCH NICHT ausgefüllt.'}
                                 </div>
                               ) : (
-                                <div className="space-y-2 pl-8">
-                                  <div className="text-xs font-semibold text-gray-500 uppercase mb-2">
+                                <div className="space-y-3 pl-8">
+                                  <div className="text-xs font-semibold text-gray-500 uppercase">
                                     📅 Antworten vom{' '}
                                     {d.todayCompletedAt
                                       ? new Date(d.todayCompletedAt).toLocaleDateString(
@@ -218,6 +219,21 @@ export default function AdminDashboard() {
                                       : 'heute'}
                                     :
                                   </div>
+                                  {d.todayRemarks ? (
+                                    <div className="bg-amber-50 border border-amber-300 rounded-xl p-4 shadow-sm">
+                                      <div className="flex items-start gap-3">
+                                        <div className="text-2xl leading-none">📝</div>
+                                        <div className="flex-1 min-w-0">
+                                          <div className="font-semibold text-sm text-amber-800 mb-1">
+                                            Spielers Notiz / Bemerkung vom Tag:
+                                          </div>
+                                          <div className="text-sm whitespace-pre-wrap text-amber-900 leading-relaxed">
+                                            {d.todayRemarks}
+                                          </div>
+                                        </div>
+                                      </div>
+                                    </div>
+                                  ) : null}
                                   {d.todayDailyAnswers.map((a) => {
                                     const ratingQ = isRatingQ(a.question);
                                     const minR = a.question.minRating ?? 1;

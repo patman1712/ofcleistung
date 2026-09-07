@@ -71,6 +71,7 @@ model DailyAnswerSession {
   player      User     @relation(fields: [playerId], references: [id], onDelete: Cascade)
   date        DateTime
   completedAt DateTime?
+  remarks     String?  // 🆕 Allgemeine Bemerkung / Notiz des Spielers pro Tag (sauber gespeichert, nicht an Textfrage gehängt!)
   createdAt   DateTime @default(now())
 
   answers DailyAnswer[]
@@ -118,6 +119,7 @@ model TrainingPlayer {
   training        Training      @relation(fields: [trainingId], references: [id], onDelete: Cascade)
   playerProfileId String
   playerProfile   PlayerProfile @relation(fields: [playerProfileId], references: [id], onDelete: Cascade)
+  remarks         String?  // 🆕 Allgemeine Bemerkung / Notiz des Spielers für dieses Training
 
   answers TrainingAnswer[]
 

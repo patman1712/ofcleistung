@@ -229,10 +229,30 @@ function DetailView({ detail }: { detail: Detail }) {
                           Ø {avg}
                         </span>
                       )}
+                      {(s as any).remarks ? (
+                        <span className="bg-amber-100 border border-amber-300 text-amber-800 text-xs font-semibold px-2.5 py-1 rounded-full">
+                          📝 Notiz vorhanden
+                        </span>
+                      ) : null}
                     </div>
                     <span className="text-xs text-gray-500">Details ▾</span>
                   </summary>
                   <div className="mt-3 space-y-3 pl-2">
+                    {(s as any).remarks ? (
+                      <div className="bg-amber-50 border border-amber-300 rounded-xl p-4 shadow-sm">
+                        <div className="flex items-start gap-3">
+                          <div className="text-2xl leading-none">📝</div>
+                          <div className="flex-1 min-w-0">
+                            <div className="font-semibold text-sm text-amber-800 mb-1">
+                              Bemerkung / Notiz des Spielers:
+                            </div>
+                            <div className="text-sm whitespace-pre-wrap text-amber-900 leading-relaxed">
+                              {(s as any).remarks}
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    ) : null}
                     {s.answers.map((a: any) => {
                       const isRatingQ =
                         a.question.questionType === 'RATING' ||
@@ -294,59 +314,121 @@ function DetailView({ detail }: { detail: Detail }) {
         {trainingAnswers.length === 0 ? (
           <div className="text-sm text-gray-500">Noch keine Trainings-Antworten.</div>
         ) : (
-          <div className="divide-y divide-gray-100 -mx-6">
-            {trainingAnswers.map((a: any) => {
-              const isRatingQ =
-                a.question.questionType === 'RATING' ||
-                a.question.questionType === 'RATING_1_10' ||
-                a.rating != null;
-              const minR = a.question.minRating ?? 1;
-              const redBelow = minR > 1 ? minR : 5;
-              const isRed = a.rating != null && a.rating < redBelow;
-              const isGreen = a.rating != null && a.rating >= 8;
-              return (
-                <div key={a.id} className="px-6 py-3">
-                  <div className="flex items-center justify-between flex-wrap gap-2">
-                    <div className="text-sm font-medium">{a.question.text}</div>
-                    <div className="text-xs text-gray-500">
-                      {a.trainingPlayer?.training?.title} ·{' '}
-                      {a.trainingPlayer?.training?.scheduledAt
-                        ? new Date(
-                            a.trainingPlayer.training.scheduledAt,
-                          ).toLocaleDateString('de-DE')
-                        : ''}
+          <div className="-mx-6 space-y-3">
+            {(() => {
+              // Gruppiere Antworten PRO TRAINING pro Spieler (trainingPlayerId!)
+              const groups = new Map<string, any[]>();
+              const tpInfoMap = new Map<string, any>();
+              for (const a of trainingAnswers) {
+                const tpId = a.trainingPlayerId;
+                if (!groups.has(tpId)) groups.set(tpId, []);
+                groups.get(tpId)!.push(a);
+                tpInfoMap.set(tpId, {
+                  title: a.trainingPlayer?.training?.title,
+                  scheduledAt: a.trainingPlayer?.training?.scheduledAt,
+                  remarks: a.trainingPlayer?.remarks ?? null,
+                });
+              }
+              const tpIds = Array.from(groups.keys()).sort((aId, bId) => {
+                const aDate = new Date(tpInfoMap.get(aId)?.scheduledAt || 0);
+                const bDate = new Date(tpInfoMap.get(bId)?.scheduledAt || 0);
+                return +bDate - +aDate; // NEUESTE Trainings zuerst
+              });
+              return tpIds.map((tpId) => {
+                const answers = groups.get(tpId) || [];
+                const info = tpInfoMap.get(tpId);
+                return (
+                  <div
+                    key={tpId}
+                    className="border-t border-gray-100 last:border-b"
+                  >
+                    <div className="bg-ofc-gray/40 px-6 py-3 flex items-center justify-between flex-wrap gap-2">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="text-lg leading-none">🏋️</span>
+                        <span className="font-semibold text-ofc-grayDark">
+                          {info?.title || 'Training'}
+                        </span>
+                        {info?.scheduledAt ? (
+                          <span className="text-xs text-gray-500">
+                            ·{' '}
+                            {new Date(info.scheduledAt).toLocaleDateString(
+                              'de-DE',
+                              {
+                                weekday: 'short',
+                                day: '2-digit',
+                                month: '2-digit',
+                                year: 'numeric',
+                              },
+                            )}
+                          </span>
+                        ) : null}
+                        {info?.remarks ? (
+                          <span className="bg-amber-100 border border-amber-300 text-amber-800 text-xs font-semibold px-2.5 py-0.5 rounded-full">
+                            📝 Notiz
+                          </span>
+                        ) : null}
+                      </div>
+                    </div>
+                    {info?.remarks ? (
+                      <div className="px-6 py-3 border-b border-amber-100 bg-amber-50/50">
+                        <div className="flex items-start gap-2">
+                          <span className="text-lg leading-none">📝</span>
+                          <div className="text-sm whitespace-pre-wrap text-amber-900 leading-relaxed">
+                            {info.remarks}
+                          </div>
+                        </div>
+                      </div>
+                    ) : null}
+                    <div className="divide-y divide-gray-100">
+                      {answers.map((a: any) => {
+                        const isRatingQ =
+                          a.question.questionType === 'RATING' ||
+                          a.question.questionType === 'RATING_1_10' ||
+                          a.rating != null;
+                        const minR = a.question.minRating ?? 1;
+                        const redBelow = minR > 1 ? minR : 5;
+                        const isRed = a.rating != null && a.rating < redBelow;
+                        const isGreen = a.rating != null && a.rating >= 8;
+                        return (
+                          <div key={a.id} className="px-6 py-3">
+                            <div className="text-sm font-medium">
+                              {a.question.text}
+                            </div>
+                            <div className="mt-1 text-sm">
+                              {isRatingQ ? (
+                                a.rating != null ? (
+                                  <span
+                                    className={`font-semibold ${
+                                      isRed
+                                        ? 'text-ofc-red'
+                                        : isGreen
+                                        ? 'text-green-600'
+                                        : ''
+                                    }`}
+                                  >
+                                    Bewertung: {a.rating}
+                                  </span>
+                                ) : (
+                                  <span className="font-semibold text-ofc-red italic">
+                                    ⚠️ KEINE Bewertung abgegeben (Pflichtfeld!)
+                                  </span>
+                                )
+                              ) : (
+                                <div className="whitespace-pre-wrap text-gray-800">
+                                  {a.text || (
+                                    <em className="text-gray-400">(leer)</em>
+                                  )}
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })}
                     </div>
                   </div>
-                  <div className="mt-1 text-sm">
-                    {isRatingQ ? (
-                      a.rating != null ? (
-                        <span
-                          className={`font-semibold ${
-                            isRed
-                              ? 'text-ofc-red'
-                              : isGreen
-                              ? 'text-green-600'
-                              : ''
-                          }`}
-                        >
-                          Bewertung: {a.rating}
-                        </span>
-                      ) : (
-                        <span className="font-semibold text-ofc-red italic">
-                          ⚠️ KEINE Bewertung abgegeben (Pflichtfeld!)
-                        </span>
-                      )
-                    ) : (
-                      <div className="whitespace-pre-wrap text-gray-800">
-                        {a.text || (
-                          <em className="text-gray-400">(leer)</em>
-                        )}
-                      </div>
-                    )}
-                  </div>
-                </div>
-              );
-            })}
+                );
+              });
+            })()}
           </div>
         )}
       </div>

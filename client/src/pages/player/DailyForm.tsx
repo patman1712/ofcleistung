@@ -46,8 +46,31 @@ export default function PlayerDailyForm() {
           setSessionId(typeof data.sessionId === 'string' ? data.sessionId : null);
           setAlreadyAnswered(!!data.answered);
           setCompletedAt(typeof data.completedAt === 'string' ? data.completedAt : null);
+          if (typeof data.remarks === 'string' && data.remarks.length > 0) {
+            setBemerkung(data.remarks);
+          }
           const init: Record<string, AnswerRow> = {};
           for (const q of qs) init[q.id] = { questionId: q.id, rating: null, text: null };
+          if (Array.isArray(data.answers)) {
+            for (const a of data.answers) {
+              if (!a || typeof a.questionId !== 'string') continue;
+              // Alt-Daten Migration: Wenn die Antwort "--- Allgemeine Bemerkung ---" enthält,
+              // die Bemerkung schon im Status mitgeliefert, also Text hier filtern!
+              let rawText: string | null = typeof a.text === 'string' ? a.text : null;
+              if (rawText) {
+                const marker = '--- Allgemeine Bemerkung ---';
+                const idx = rawText.indexOf(marker);
+                if (idx >= 0) {
+                  rawText = rawText.slice(0, idx).trim() || null;
+                }
+              }
+              init[a.questionId] = {
+                questionId: a.questionId,
+                rating: a.rating != null ? Number(a.rating) : null,
+                text: rawText,
+              };
+            }
+          }
           setAnswers(init);
         }
       } catch (err: any) {
@@ -112,30 +135,13 @@ export default function PlayerDailyForm() {
     try {
       const payload: any = {
         sessionId,
+        remarks: bemerkung.trim().length > 0 ? bemerkung.trim() : null,
         answers: Object.values(answers).map((a) => ({
           questionId: a.questionId,
           rating: a.rating,
           text: a.text,
         })),
       };
-      // Zusätzliches Bemerkungsfeld als Text an eine extra Text-Frage hängen:
-      // Wenn es keine extra Textfrage gibt, fügen wir die Bemerkung als letzten Eintrag mit einer "virtuellen" Frage nicht ein.
-      // Stattdessen: Wenn der Nutzer eine Bemerkung eingibt und es schon eine Text-Frage gab, ignorieren wir dies.
-      // Einfacher Ansatz: Zusätzliche Bemerkung in die letzte Text-Antwort legen falls leer,
-      // sonst an alle Text-Antworten dranhängen. Simpler: Zusätzliches Feld wird als separate Antwort an die letzte Text-Frage appended.
-      if (bemerkung.trim().length > 0) {
-        const lastText = textQuestions[textQuestions.length - 1];
-        if (lastText) {
-          const target = payload.answers.find((x: any) => x.questionId === lastText.id);
-          if (target) {
-            const prev = answers[lastText.id]?.text ?? '';
-            const merged =
-              (prev ? prev + '\n\n' : '') +
-              `--- Allgemeine Bemerkung ---\n${bemerkung.trim()}`;
-            target.text = merged;
-          }
-        }
-      }
       await api.post('/daily-questions/submit/today', payload);
       setTimeout(() => nav('/player'), 400);
     } catch (err: any) {
