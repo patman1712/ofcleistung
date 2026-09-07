@@ -91,6 +91,8 @@ model DailyAnswer {
   text       String?
   createdAt  DateTime @default(now())
 
+  triggeredAlert Alert? // 🆕 Wenn diese einzelne Antwort einen Alert ausgelöst hat
+
   @@index([sessionId])
   @@index([playerId])
   @@index([questionId])
@@ -152,6 +154,8 @@ model TrainingAnswer {
   text             String?
   createdAt        DateTime @default(now())
 
+  triggeredAlert Alert? // 🆕 Wenn diese einzelne Antwort einen Alert ausgelöst hat
+
   @@index([trainingPlayerId])
   @@index([playerId])
   @@index([questionId])
@@ -179,6 +183,18 @@ model Alert {
   severity        String   @default("WARNING") // "WARNING" | "CRITICAL"
   resolved        Boolean  @default(false)
   createdAt       DateTime @default(now())
+
+  // 🆕 NEU: Alert wird AUSGELÖST von einer einzelnen Antwort!
+  dailyAnswerId    String?       @unique
+  dailyAnswer      DailyAnswer?  @relation(fields: [dailyAnswerId], references: [id], onDelete: Cascade)
+  trainingAnswerId String?       @unique
+  trainingAnswer   TrainingAnswer? @relation(fields: [trainingAnswerId], references: [id], onDelete: Cascade)
+
+  // 🆕 NEU: Scope unterscheiden (damit Dashboard gut anzeigen kann)
+  answerScope      String? // "DAILY_SINGLE" | "TRAINING_SINGLE" | "STREAK" (ALT)
+  ratingValue      Int?    // Bewertung die den Alert auslöste (z.B. 3)
+  thresholdUsed    Int?    // Schwellwert der verwendet wurde (z.B. 5 oder minRating)
+  questionSnapshot String? // Frage-Text zum Zeitpunkt des Alerts (für Nachvollziehbarkeit, falls Frage später gelöscht/geändert)
 
   @@index([playerProfileId])
   @@index([resolved])

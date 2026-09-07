@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { prisma } from '../lib/prisma.js';
 import { requireAdmin, requireAdminOrStaff, authMiddleware } from '../middleware/auth.js';
 import { asString } from '../types.js';
+import { backfillAllSingleAnswerAlerts } from '../services/alertService.js';
 
 const router = Router();
 
@@ -141,6 +142,7 @@ router.post('/check', authMiddleware, requireAdmin, async (req, res) => {
             configId: cfg.id,
             playerProfileId: profile.id,
             resolved: false,
+            answerScope: 'STREAK', // ⚠️ NEU Unterscheidung!
           },
         });
         if (!existing) {
@@ -150,6 +152,7 @@ router.post('/check', authMiddleware, requireAdmin, async (req, res) => {
               playerProfileId: profile.id,
               severity,
               message: `${maxStreak}x nacheinander schlechte Bewertungen (<= ${cfg.threshold})`,
+              answerScope: 'STREAK',
             },
           });
           created++;
@@ -158,7 +161,15 @@ router.post('/check', authMiddleware, requireAdmin, async (req, res) => {
     }
   }
 
-  res.json({ createdAlerts: created });
+  // 🆕 NEU: Einzel-Antwort-Alerts (Single Question) für ALLE vergangenen Antworten prüfen!
+  const singleAnswerAlertsCreated = await backfillAllSingleAnswerAlerts();
+  created += singleAnswerAlertsCreated;
+
+  res.json({
+    createdAlerts: created,
+    streakAlerts: created - singleAnswerAlertsCreated,
+    singleAnswerAlertsCreated: singleAnswerAlertsCreated,
+  });
 });
 
 export default router;

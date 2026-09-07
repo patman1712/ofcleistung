@@ -4,6 +4,7 @@ import { prisma } from '../lib/prisma.js';
 import { requireAdmin, authMiddleware, requireAuth } from '../middleware/auth.js';
 import { QuestionType, asString } from '../types.js';
 import { startOfDay, format } from 'date-fns';
+import { processDailyAnswers } from '../services/alertService.js';
 
 const router = Router();
 
@@ -202,6 +203,14 @@ router.post('/submit/today', authMiddleware, requireAuth, async (req, res) => {
           text: finalText,
         },
       });
+    }
+
+    // 🆕 SINGLE QUESTION ALERTS! Nach dem Speichern ALLE Antworten prüfen (Rating < minRating / 5
+    try {
+      await processDailyAnswers(session.id);
+    } catch (err: any) {
+      // Alert-Erstellung darf die Antwort nicht verhindern (nicht-fatal)
+      console.error('[DailyQuestions alert processing failed:', err?.message || err);
     }
 
     res.json({ ok: true, sessionId: session.id });

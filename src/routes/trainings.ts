@@ -4,6 +4,7 @@ import { prisma } from '../lib/prisma.js';
 import { requireAdmin, authMiddleware, requireAuth } from '../middleware/auth.js';
 import { QuestionType, asString } from '../types.js';
 import { addMinutes } from 'date-fns';
+import { processTrainingAnswers } from '../services/alertService.js';
 
 const router = Router();
 
@@ -246,6 +247,7 @@ router.post('/submit/answers', authMiddleware, requireAuth, async (req, res) => 
 
     const isRatingQuestion = (qt: string) => qt === 'RATING_1_10' || qt === 'RATING';
 
+    const createdAnswerIds: string[] = [];
     for (const a of body.answers) {
       const q = tp.training.questions.find((x) => x.id === a.questionId);
       if (!q) continue;
@@ -267,7 +269,7 @@ router.post('/submit/answers', authMiddleware, requireAuth, async (req, res) => 
         }
         finalText = a.text.toString();
       }
-      await prisma.trainingAnswer.create({
+      const ans = await prisma.trainingAnswer.create({
         data: {
           trainingPlayerId: tp.id,
           questionId: a.questionId,
@@ -276,7 +278,16 @@ router.post('/submit/answers', authMiddleware, requireAuth, async (req, res) => 
           text: finalText,
         },
       });
+      createdAnswerIds.push(ans.id);
     }
+
+    // 🆕 SINGLE QUESTION ALERTS für Trainingsantworten!
+    try {
+      await processTrainingAnswers(createdAnswerIds);
+    } catch (err: any) {
+      console.error('[Training alert processing failed:', err?.message || err);
+    }
+
     res.json({ ok: true });
   } catch (err: any) {
     res.status(400).json({ error: err.message || 'Fehler' });
