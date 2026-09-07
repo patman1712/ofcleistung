@@ -181,6 +181,32 @@ router.post('/whatsapp/debug-send', authMiddleware, requireAdmin, async (req, re
         debug.networkError = e?.message || String(e);
         debug.guess = ['⚠️ Netzwerkfehler (keine Verbindung zu api.callmebot.com)'];
       }
+    } else if (cfg.provider === 'textmebot') {
+      debug.apikey = (cfg.textmebotApikey || '').slice(0, 5) + '*** (masked)';
+      try {
+        const url = 'https://api.textmebot.com/send.php';
+        const params = new URLSearchParams({ recipient: to, apikey: cfg.textmebotApikey || '', text: text.slice(0, 3500) });
+        debug.request = { method: 'GET', url: `${url}?recipient=${encodeURIComponent(to)}&text=<${text.length} chars>&apikey=${(cfg.textmebotApikey || '').slice(0,3)}***` };
+        const startAt = Date.now();
+        const resp = await axios.get(`${url}?${params.toString()}`, { timeout: 25000, validateStatus: () => true, responseType: 'text', transformResponse: [(d) => d] });
+        debug.responseMs = Date.now() - startAt;
+        debug.httpStatus = resp.status;
+        const raw = String(resp.data || '');
+        debug.responseBodyRaw = raw;
+        debug.responseBodyClean = raw.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 1500);
+        const low = debug.responseBodyClean.toLowerCase();
+        debug.guess = [];
+        if (low.match(/invalid.*(key|apikey)|key.*invalid|api.*key.*not.*(valid|found)/i))
+          debug.guess.push('❌ TextMeBot: API KEY FALSCH! Key prüfen (von textmebot.com Email).');
+        if (low.match(/subscribe|payment|expired|inactive|buy.*plan/i))
+          debug.guess.push('💰❌ Abonnement nicht aktiv! Gehe auf textmebot.com → Unlimited $6/Monat oder $60/Jahr abonnieren.');
+        if (low.match(/sent.*recipient|message.*sent|successfully|queued/i))
+          debug.guess.push('✅ TextMeBot: VERSAND ERFOLGREICH!');
+        if (debug.guess.length === 0) debug.guess.push('ℹ️ Bitte responseBodyClean aufmerksam lesen!');
+      } catch (e: any) {
+        debug.networkError = e?.message || String(e);
+        debug.guess = ['⚠️ Netzwerkfehler (keine Verbindung zu api.textmebot.com)'];
+      }
     } else if (cfg.provider === 'telegram') {
       try {
         const token = cfg.telegramBotToken || '';
@@ -263,15 +289,19 @@ export const PROVIDERS_META: Record<ReminderProvider, {
     price: 'Bezahlt (~0,08€ / WhatsApp + monatl. Fee)',
   },
   callmebot: {
-    name: 'CallMeBot (EMPFOHLEN KLEINE KREISE!)',
-    price: '100/Monat KOSTENLOS, danach ~5€ LIFETIME (einmalig!)',
+    name: 'CallMeBot (NUR 1 Person, FREE!)',
+    price: '100% kostenlos, aber NUR 1 Empfänger (1:1 Key ↔ Nummer Bindung!)',
+  },
+  textmebot: {
+    name: '🥇 TextMeBot (MANNSCHAFT - mehrere Empfänger!)',
+    price: '$6/Monat (~5,50€) oder $60/Jahr - UNLIMITED RECIPIENTS! + 2 Tage FREE Demo!',
   },
   evolution: {
     name: 'Evolution API (selbst hosten, Open Source)',
     price: '100% kostenlos (Docker + Handy WA Nummer als Bot nötig)',
   },
   telegram: {
-    name: 'Telegram Bots (KEIN WhatsApp!)',
+    name: '🥉 Telegram Bots (KEIN WhatsApp!)',
     price: '100% KOSTENLOS - UNENDLICH viele Nachrichten',
   },
 } as any;

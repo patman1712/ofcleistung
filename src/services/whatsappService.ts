@@ -2,13 +2,13 @@ import twilio from 'twilio';
 import axios from 'axios';
 import { prisma } from '../lib/prisma.js';
 
-export type ReminderProvider = 'twilio' | 'callmebot' | 'evolution' | 'telegram';
+export type ReminderProvider = 'twilio' | 'callmebot' | 'textmebot' | 'evolution' | 'telegram';
 
 // ======== Setting Keys ========
 export const WA_KEYS = {
   // Allgmein
   ENABLED: 'wa_enabled',
-  PROVIDER: 'wa_provider', // 'twilio' | 'callmebot' | 'evolution' | 'telegram'
+  PROVIDER: 'wa_provider', // 'twilio' | 'callmebot' | 'textmebot' | 'evolution' | 'telegram'
   TIME: 'wa_time',
   MESSAGE: 'wa_message',
   TIMEZONE: 'wa_timezone',
@@ -18,25 +18,19 @@ export const WA_KEYS = {
   AUTH: 'wa_authToken',
   FROM: 'wa_from',
 
-  // 🆕 CallMeBot
-  CALLMEBOT_APIKEY: 'wa_callmebot_apikey', // Format: "123456" (User bekommt Nummer pro Handy)
-  // ❗ CallMeBot braucht **individuellen ApiKey PRO Nummer!**
-  // → Deshalb nutzen wir PlayerProfile.phoneNumber UND callmebot_apikey NUR als "Admin-ApiKey, falls vorhanden
-  // Für CallMeBot Einrichtung: Jede Nummer bekommt einen eigenen Key
-  // Wir bauen ein Fallback Mapping: Setting CallMeBot APIKEY = Default-Key für Admin Test.
-  // Für echte Spieler wird eine WA-Nachricht an CallMeBot geschickt.
+  // 🆕 CallMeBot (FREE - aber NUR 1 Empfänger! Für Teams nicht geeignet!)
+  CALLMEBOT_APIKEY: 'wa_callmebot_apikey',
+
+  // 🆕 TextMeBot (gleiches Team wie CallMeBot! Für MEHRERE Empfänger / Mannschaften)
+  TEXTMEBOT_APIKEY: 'wa_textmebot_apikey',
 
   // 🆕 Evolution API (OpenSource WhatsApp HTTP Gateway)
-  EVO_BASE: 'wa_evo_base', // z.B. "https://evo.meinedomain.de"
-  EVO_INSTANCE: 'wa_evo_instance', // z.B. "ofc-bot"
-  EVO_APIKEY: 'wa_evo_apikey', // z.B. "Bearer ..." oder nur APIKey String
+  EVO_BASE: 'wa_evo_base',
+  EVO_INSTANCE: 'wa_evo_instance',
+  EVO_APIKEY: 'wa_evo_apikey',
 
   // 🆕 Telegram
-  TELEGRAM_BOT_TOKEN: 'wa_telegram_bottoken', // von @BotFather
-  // ChatId für Spieler wird pro User in Setting pro Spieler gespeichert?
-  // Einfacher: PlayerProfile hat phoneNumber → für Telegram nutzen wir playerId als "Key" +
-  // Wir speichern pro Spieler in Setting Tabelle? Nein, Einfacher: PlayerProfile bekommt telegramChatId String?
-  // ABER: Um Schema Migration zu sparen: Nutzen wir Setting Tabelle mit Key pattern `tg_chatid_{playerId}`
+  TELEGRAM_BOT_TOKEN: 'wa_telegram_bottoken',
 } as const;
 
 // ======== Telefonnummer normalisieren ========
@@ -64,6 +58,7 @@ export interface WhatsAppConfig {
   from?: string;
 
   callmebotApikey?: string;
+  textmebotApikey?: string;
 
   evoBase?: string;
   evoInstance?: string;
@@ -92,6 +87,7 @@ export async function loadWAConfig(): Promise<WhatsAppConfig> {
     authToken: map[WA_KEYS.AUTH],
     from: map[WA_KEYS.FROM],
     callmebotApikey: map[WA_KEYS.CALLMEBOT_APIKEY],
+    textmebotApikey: map[WA_KEYS.TEXTMEBOT_APIKEY],
     evoBase: map[WA_KEYS.EVO_BASE],
     evoInstance: map[WA_KEYS.EVO_INSTANCE],
     evoApikey: map[WA_KEYS.EVO_APIKEY],
@@ -144,6 +140,8 @@ export async function sendReminderMessage(
   switch (cfg.provider) {
     case 'callmebot':
       return sendCallMeBot(cfg, ctx.phoneRaw, text);
+    case 'textmebot':
+      return sendTextMeBot(cfg, ctx.phoneRaw, text);
     case 'evolution':
       return sendEvolution(cfg, ctx.phoneRaw, text);
     case 'telegram':
@@ -214,6 +212,54 @@ async function sendCallMeBot(cfg: WhatsAppConfig, toPhoneRaw: string | null | un
     return { provider: 'callmebot', ok: true, sid: `callmebot-${Math.random().toString(36).slice(2, 10)}` };
   } catch (e: any) {
     return { provider: 'callmebot', ok: false, error: e?.message || String(e) };
+  }
+}
+
+// ======== Provider 2b: TextMeBot (Nachfolge-Service von CallMeBot! Für Mannschaften/mehrere Empfänger!) ========
+// Dokumentation: https://textmebot.com
+// Aktion: https://api.textmebot.com/send.php?recipient=<+49XXX>&apikey=<DEIN_KEY>&text=<TEXT>
+// Vorteil: Ein Key, UNENDLICH viele Empfänger! (CallMeBot Free war 1:1 Key-Nummer Bindung)
+// Preis: Unlimited recipients: $6/Monat ≈ 5,50€/Monat ODER $60/Jahr ≈ 5€/Monat + 2 Tage KOSTENLOSE Demo!
+// Setup: (1) textmebot.com → "Get Demo APIKey" → Key per Email, (2) WA-Nummer per QR-Code linken, (3) Key hier einfügen!
+async function sendTextMeBot(cfg: WhatsAppConfig, toPhoneRaw: string | null | undefined, text: string): Promise<SendResult> {
+  const to = normalizePhone(toPhoneRaw);
+  if (!to) return { provider: 'textmebot', ok: false, error: 'Ungültige Telefonnummer' };
+  if (!cfg.textmebotApikey) {
+    return { provider: 'textmebot', ok: false, error: 'TextMeBot: Fehlender APIKey (TextMeBot Apikey - hol dir einen auf textmebot.com!)' };
+  }
+  try {
+    const url = 'https://api.textmebot.com/send.php';
+    const params = new URLSearchParams({ recipient: to, apikey: cfg.textmebotApikey, text: text.slice(0, 3500) });
+    const resp = await axios.get(`${url}?${params.toString()}`, {
+      timeout: 20000,
+      validateStatus: () => true,
+      responseType: 'text',
+      transformResponse: [(data) => data],
+    });
+    const bodyRaw = String(resp.data || '');
+    const body = bodyRaw.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
+
+    // TextMeBot typische Antworten: z.B. "Message sent to: 1 recipients / Error: Invalid ApiKey"
+    const low = body.toLowerCase();
+    const ok = resp.status === 200 &&
+      (/(sent.*recipient|successfully|queued|message.*sent|ok\b)/i.test(low)) &&
+      !/(invalid apikey|api key not|error|not.*found|expired|blocked)/i.test(low);
+    const failMatch =
+      body.match(/invalid\s+api?\s*key/i) ||
+      body.match(/api.*key.*not.*(valid|found)/i) ||
+      body.match(/key.*expired/i) ||
+      body.match(/error[:\-]/i) ||
+      body.match(/you.*need.*to.*subscribe/i);
+
+    if (resp.status >= 400 || failMatch || !ok) {
+      const err = failMatch
+        ? `${failMatch[0]} (TextMeBot Key: ${cfg.textmebotApikey?.slice(0,3)}***. Prüfe: Key in https://textmebot.com oder Key abgelaufen?)`
+        : body.slice(0, 250) || `HTTP ${resp.status}`;
+      return { provider: 'textmebot', ok: false, error: `TextMeBot: ${err}` };
+    }
+    return { provider: 'textmebot', ok: true, sid: `textmebot-${Math.random().toString(36).slice(2,10)}` };
+  } catch (e: any) {
+    return { provider: 'textmebot', ok: false, error: e?.message || String(e) };
   }
 }
 

@@ -7,6 +7,8 @@ interface OverviewItem {
   avgDailyLast7Days: number | null;
   activeAlerts: number;
   lastDailyCompletedAt: string | null;
+  todayCompletedAt: string | null;
+  completedToday: boolean;
 }
 
 export default function AdminDashboard() {
@@ -38,7 +40,7 @@ export default function AdminDashboard() {
     },
     {
       label: 'Heute schon geantwortet',
-      value: data.filter((d) => d.lastDailyCompletedAt).length,
+      value: data.filter((d) => d.completedToday).length,
       color: 'ofc-red',
     },
   ];

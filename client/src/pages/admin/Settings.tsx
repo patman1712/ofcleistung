@@ -19,6 +19,7 @@ const WA_KEYS = {
   AUTH: 'wa_authToken',
   FROM: 'wa_from',
   CALLMEBOT_APIKEY: 'wa_callmebot_apikey',
+  TEXTMEBOT_APIKEY: 'wa_textmebot_apikey',
   EVO_BASE: 'wa_evo_base',
   EVO_INSTANCE: 'wa_evo_instance',
   EVO_APIKEY: 'wa_evo_apikey',
@@ -28,7 +29,7 @@ const WA_KEYS = {
   TIMEZONE: 'wa_timezone',
 } as const;
 
-type ReminderProvider = 'twilio' | 'callmebot' | 'evolution' | 'telegram';
+type ReminderProvider = 'twilio' | 'callmebot' | 'textmebot' | 'evolution' | 'telegram';
 
 interface WADraft {
   enabled: boolean;
@@ -37,6 +38,7 @@ interface WADraft {
   authToken: string;
   from: string;
   callmebotApikey: string;
+  textmebotApikey: string;
   evoBase: string;
   evoInstance: string;
   evoApikey: string;
@@ -48,11 +50,12 @@ interface WADraft {
 
 const WA_DRAFT_DEFAULT: WADraft = {
   enabled: false,
-  provider: 'twilio',
+  provider: 'textmebot',
   accountSid: '',
   authToken: '',
   from: 'whatsapp:+49151000000000',
   callmebotApikey: '',
+  textmebotApikey: '',
   evoBase: '',
   evoInstance: 'ofc-bot',
   evoApikey: '',
@@ -62,10 +65,11 @@ const WA_DRAFT_DEFAULT: WADraft = {
   timezone: 'Europe/Berlin',
 };
 
-const PROVIDER_OPTIONS: Array<{ value: ReminderProvider; label: string; price: string; emoji: string }> = [
-  { value: 'callmebot', label: '🥇 CallMeBot (WhatsApp)', price: '100/Monat frei, danach ~5€ EINMALIG', emoji: '🤖' },
-  { value: 'telegram', label: '🥉 Telegram Bots', price: '100% KOSTENLOS - ohne Limit', emoji: '✈️' },
-  { value: 'evolution', label: '🥈 Evolution API (Open Source WhatsApp)', price: '0€ (Docker + eigne WA-Nr. als Bot)', emoji: '🐳' },
+const PROVIDER_OPTIONS: Array<{ value: ReminderProvider; label: string; price: string; emoji: string; tag?: string }> = [
+  { value: 'textmebot', label: '🥇 TextMeBot (WhatsApp MANNSCHAFT!)', price: '$6/Monat ≈ 5,50€ · Unlimited Recipients', emoji: '🤖', tag: '🔝 TOP' },
+  { value: 'telegram', label: '🥉 Telegram Bots', price: '100% KOSTENLOS - ohne Limit', emoji: '✈️', tag: '0€' },
+  { value: 'callmebot', label: 'CallMeBot (FREE nur 1 Person!)', price: 'KOSTENLOS · ABER: 1:1 Key-Nummer Bindung (NUR Admin!)', emoji: '🆓', tag: 'nur privat' },
+  { value: 'evolution', label: '🥈 Evolution API (Open Source WA)', price: '0€ (Docker + eigene WA-Nr. als Bot)', emoji: '🐳', tag: 'Selbsthosting' },
   { value: 'twilio', label: 'Twilio', price: 'Bezahlt (~0,08€ / WA + Monatliche Fee)', emoji: '💸' },
 ];
 
@@ -105,11 +109,12 @@ export default function AdminSettings() {
       setAppName(s.appName || '');
       setWa({
         enabled: s[WA_KEYS.ENABLED] === 'true',
-        provider: (s[WA_KEYS.PROVIDER] as ReminderProvider) || 'twilio',
+        provider: (s[WA_KEYS.PROVIDER] as ReminderProvider) || 'textmebot',
         accountSid: s[WA_KEYS.SID] || '',
         authToken: s[WA_KEYS.AUTH] || '',
         from: s[WA_KEYS.FROM] || WA_DRAFT_DEFAULT.from,
         callmebotApikey: s[WA_KEYS.CALLMEBOT_APIKEY] || '',
+        textmebotApikey: s[WA_KEYS.TEXTMEBOT_APIKEY] || '',
         evoBase: s[WA_KEYS.EVO_BASE] || '',
         evoInstance: s[WA_KEYS.EVO_INSTANCE] || WA_DRAFT_DEFAULT.evoInstance,
         evoApikey: s[WA_KEYS.EVO_APIKEY] || '',
@@ -140,6 +145,7 @@ export default function AdminSettings() {
         [WA_KEYS.AUTH]: wa.authToken.trim(),
         [WA_KEYS.FROM]: wa.from.trim() || '',
         [WA_KEYS.CALLMEBOT_APIKEY]: wa.callmebotApikey.trim(),
+        [WA_KEYS.TEXTMEBOT_APIKEY]: wa.textmebotApikey.trim(),
         [WA_KEYS.EVO_BASE]: wa.evoBase.trim(),
         [WA_KEYS.EVO_INSTANCE]: wa.evoInstance.trim(),
         [WA_KEYS.EVO_APIKEY]: wa.evoApikey.trim(),
@@ -546,7 +552,7 @@ export default function AdminSettings() {
         {/* Provider-Auswahl */}
         <div>
           <label className="label">🚀 Anbieter / Versandart (Kostenvergleich hier!)</label>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
             {PROVIDER_OPTIONS.map((o) => {
               const active = wa.provider === o.value;
               return (
@@ -554,15 +560,20 @@ export default function AdminSettings() {
                   key={o.value}
                   type="button"
                   onClick={() => setWaField('provider', o.value)}
-                  className={`text-left p-4 rounded-xl border-2 transition-all ${
+                  className={`text-left p-4 rounded-xl border-2 transition-all relative ${
                     active
                       ? 'border-ofc-red bg-red-50 shadow-md ring-2 ring-ofc-red/10'
                       : 'border-gray-200 bg-white hover:border-gray-300 hover:bg-gray-50'
                   }`}
                 >
+                  {o.tag && (
+                    <span className={`absolute top-2 right-2 text-[10px] font-bold px-2 py-0.5 rounded-full ${o.tag === '0€' ? 'bg-green-600 text-white' : o.tag === 'nur privat' ? 'bg-gray-500 text-white' : o.tag === 'Selbsthosting' ? 'bg-purple-600 text-white' : 'bg-orange-500 text-white'}`}>
+                      {o.tag}
+                    </span>
+                  )}
                   <div className="flex items-center gap-2 mb-1">
                     <span className="text-2xl">{o.emoji}</span>
-                    <span className={`font-bold ${active ? 'text-ofc-red' : 'text-gray-800'}`}>{o.label}</span>
+                    <span className={`font-bold text-sm pr-10 ${active ? 'text-ofc-red' : 'text-gray-800'}`}>{o.label}</span>
                   </div>
                   <div className="text-[11px] text-gray-600 leading-snug">{o.price}</div>
                 </button>
@@ -591,28 +602,61 @@ export default function AdminSettings() {
             </div>
           )}
 
-          {/* ============= CallMeBot (EMPFOHLEN!) ============= */}
+          {/* ============= CallMeBot (NUR 1 PERSON, FREE) ============= */}
           {wa.provider === 'callmebot' && (
             <div className="space-y-4">
               <div>
-                <label className="label">🤖 CallMeBot APIKey (6-stellig, Format: 123456)</label>
+                <label className="label">🆓 CallMeBot APIKey (6-stellig, Format: 123456)</label>
                 <input className="input font-mono text-sm" placeholder="123456" value={wa.callmebotApikey} onChange={(e) => setWaField('callmebotApikey', e.target.value)} />
                 <div className="p-3 mt-2 rounded-lg bg-red-50 border border-red-200 text-red-900 text-xs space-y-1">
-                  <div><strong>⚠️ WICHTIG!</strong></div>
-                  <div>Der API-Key ist <strong>NUR für DIE EINE NUMMER gültig</strong>, von der du den Join-Text (I allow callmebot...) geschickt hast!</div>
-                  <div>Zum Testen hier unbedingt <strong>genau die gleiche Nummer</strong> eingeben, mit der du den Key erhalten hast!</div>
-                  <div>Für mehrere Spieler: Jeder Spieler muss <strong>SELBST</strong> den Join-Text an CallMeBot schicken und seinen eigenen 6-stelligen Key bekommen → <em>Bei kleinen Mannschaften ({'< 10'} Spieler) ist das trotzdem einfacher als Twilio! Oder für Mannschaften: 5€ Lifetime-Key auf callmebot.com für unbegrenzte Nachrichten an beliebige Nummern!</em></div>
+                  <div><strong>⚠️ NUR FÜR 1 PERSON GEEIGNET!</strong></div>
+                  <div>Der Key ist <strong>1:1 an EXAKT DIE NUMMER gebunden</strong>, von der du den Join-Text geschickt hast - keine Mannschafts-Tauglichkeit!</div>
+                  <div><strong>👉 Für Mannschaften: Provider auf 🥇 TextMeBot (5. Kachel oben) wechseln!</strong></div>
                 </div>
               </div>
               <div className="p-4 rounded-lg bg-green-50 border border-green-200 text-green-900 text-sm space-y-1">
-                <div><strong>✅ CallMeBot Einrichtung (30 Sekunden, FREE TIER: 100 Msg/Monat!):</strong></div>
+                <div><strong>✅ CallMeBot Free Einrichtung (nur für Dich persönlich):</strong></div>
                 <ol className="list-decimal ml-5 space-y-1">
                   <li>Öffne <a className="underline font-bold" href="https://api.whatsapp.com/send?phone=34644672202&text=I%20allow%20callmebot%20to%20send%20me%20messages" target="_blank" rel="noreferrer">👉 WhatsApp an CallMeBot (+34 644 672 202)</a> - Nachricht ist bereits ausgefüllt!</li>
                   <li>Schicke die Nachricht ab. Sofort bekommst du einen <strong>6-stelligen API-Key</strong> zurück 🎉</li>
-                  <li>Diesen Key in das Feld oben kopieren → 💾 Speichern → direkt Test senden (mit genau DEINER Nummer!)</li>
+                  <li>Diesen Key in das Feld oben kopieren → 💾 Speichern → Test senden (mit genau DEINER Nummer!)</li>
                 </ol>
-                <div className="pt-2 mt-2 border-t border-green-200/60">
-                  <strong>💰 Upgrade (Empfehlung für Mannschaft):</strong> Einmalig <strong>~5€</strong> via <a href="https://www.callmebot.com/blog/free-api-whatsapp-messages/" target="_blank" rel="noreferrer" className="underline font-bold">callmebot.com</a> → <strong>UNENDLICH viele Nachrichten an JEGLICHE Nummer!</strong> (keine 1:1 Nummer-Key Bindung mehr!)
+                <div className="pt-2 mt-2 border-t border-green-200/60 text-amber-900 bg-amber-50/80 rounded p-2 -mx-2">
+                  <strong>⚠️ WICHTIG:</strong> CallMeBot FREE = 1:1 Key zu NUMMER! Für Mannschaften (mehrere Spieler) → <strong>Provider wechseln zu 🥇 TextMeBot!</strong>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* ============= 🥇 TextMeBot (MANNSCHAFT! Mehrere Empfänger - OFFIZIELL NACHFOLGE) ============= */}
+          {wa.provider === 'textmebot' && (
+            <div className="space-y-4">
+              <div>
+                <label className="label">🥇 TextMeBot APIKey (langer String, kommt per E-Mail!)</label>
+                <input className="input font-mono text-sm" placeholder="z.B. TM-abc123def456... oder abcd-1234..." value={wa.textmebotApikey} onChange={(e) => setWaField('textmebotApikey', e.target.value)} />
+                <div className="p-3 mt-2 rounded-lg bg-emerald-50 border border-emerald-200 text-emerald-900 text-xs space-y-1">
+                  <div><strong>✅ PERFEKT FÜR OFC MANNSCHAFT!</strong> Ein Key für <strong>ALLE SPIELER</strong> (keine 1:1 Bindung!)</div>
+                  <div>Preis: <strong>$6 / Monat ≈ 5,50€/Monat</strong> ODER <strong>$60 / Jahr ≈ 5€/Monat</strong> (17% Rabatt!) + <strong>2 TAGE KOSTENLOSE DEMO!</strong></div>
+                </div>
+              </div>
+              <div className="p-4 rounded-lg bg-sky-50 border border-sky-200 text-sky-900 text-sm space-y-2">
+                <div><strong>🚀 TextMeBot Einrichtung (3 Minuten - 2 Tage KOSTENLOS testen!):</strong></div>
+                <ol className="list-decimal ml-5 space-y-1">
+                  <li>Öffne <a className="underline font-bold text-sky-900" href="https://textmebot.com/#lepopup-NewApiKey" target="_blank" rel="noreferrer">👉 textmebot.com → "Get Demo APIKey" (KOSTENLOS 2 Tage!)</a></li>
+                  <li>E-Mail eingeben → <strong>Key kommt sofort per E-Mail</strong> (Betreff: "TextMeBot ApiKey")</li>
+                  <li>In der E-Mail ist ein <strong>Link zum QR-Code Login</strong>: Klick drauf → <strong>WhatsApp auf OFC-Handy/Admin-Handy scannen</strong> (Web WhatsApp Login - genau wie WhatsApp Web am PC!)</li>
+                  <li>Den APIKey aus der E-Mail in das Feld oben kopieren → <strong>💾 Speichern</strong></li>
+                  <li>👉 <strong>Test Nachricht senden</strong> mit beliebiger Nummer (z.B. Spieler-Nummer!) - Nachricht kommt von DEINER WhatsApp Nummer raus!</li>
+                  <li>Später: Wenn Demo gut läuft → <a href="https://textmebot.com/#prices" target="_blank" rel="noreferrer" className="font-bold underline">Unlimited $6/Monat oder $60/Jahr abonnieren!</a></li>
+                </ol>
+                <div className="pt-2 mt-2 border-t border-sky-200/60 text-xs space-y-1">
+                  <div>💡 Vorteile vs. CallMeBot/Twilio:</div>
+                  <ul className="list-disc ml-5 space-y-0.5">
+                    <li><strong>NACHRICHTEN KOMMEN VON DEINER WENN NUMBER!</strong> (Absender = "OFC Leistungsdiagnostik" Admin Nummer, nicht irgendein Bot)</li>
+                    <li><strong>1 Key = ALLE NUMMERN</strong> (Spieler müssen NICHTS extra machen! Einfach nur Telefonnummern in Spieler-Verwaltung hinterlegen ✅)</li>
+                    <li><strong>5,50€ / Monat Flatrate UNENDLICH Nachrichten</strong> (statt Twilio ~15€/Monat + 0,08€ pro Nachricht!)</li>
+                    <li>Perfekt für OFC: ~20 Spieler × 30 Tage = 600 Nachrichten - alles inklusive!</li>
+                  </ul>
                 </div>
               </div>
             </div>

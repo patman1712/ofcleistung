@@ -1,8 +1,21 @@
 import { Router } from 'express';
 import { prisma } from '../lib/prisma.js';
 import { requireAdmin, requireAdminOrStaff, authMiddleware } from '../middleware/auth.js';
-import { startOfDay, subDays } from 'date-fns';
+import { startOfDay, subDays, isSameDay } from 'date-fns';
+import { toZonedTime, fromZonedTime, formatInTimeZone } from 'date-fns-tz';
 import { asString } from '../types.js';
+
+const TZ = 'Europe/Berlin';
+
+// Helper: Vergleicht ob ein Date (Datumsteil!) "heute" ist in der gegebenen Zeitzone.
+// Wir benutzen das für DailyAnswerSession.date (das ein DATE-Feld ist, gespeichert als Mitternacht UTC des Tages)
+// UND für completedAt (der echte Submit-Timestamp)
+function isTodayInTz(date: Date | null | undefined): boolean {
+  if (!date) return false;
+  const zonedNow = toZonedTime(new Date(), TZ);
+  const zonedCheck = toZonedTime(date, TZ);
+  return isSameDay(zonedNow, zonedCheck);
+}
 
 const router = Router();
 
@@ -21,6 +34,7 @@ router.get('/overview', authMiddleware, requireAdminOrStaff, async (req, res) =>
     const dailySessions = await prisma.dailyAnswerSession.findMany({
       where: { playerId: p.id, date: { gte: weekAgo } },
       include: { answers: true },
+      orderBy: { date: 'desc' },
     });
     const allDailyRatings = dailySessions.flatMap((s) =>
       s.answers.filter((a) => a.rating != null).map((a) => a.rating as number),
@@ -36,12 +50,23 @@ router.get('/overview', authMiddleware, requireAdminOrStaff, async (req, res) =>
       include: { config: true },
     });
 
+    // 🔑 FIX: HEUTE ERLEDIGT prüfen! (NICHT irgendeine Session der letzten 7 Tage!)
+    // Kriterium: Entweder DailyAnswerSession.date ist HEUTE (TZ Berlin) + completedAt gesetzt
+    // ODER completedAt (Submit-Zeitpunkt) ist HEUTE (TZ Berlin)
+    const todayCompletedSession = dailySessions.find(
+      (s) =>
+        s.completedAt != null &&
+        (isTodayInTz(s.date) || isTodayInTz(s.completedAt)),
+    );
+    const latestCompletedSession = dailySessions.find((s) => s.completedAt);
+
     result.push({
       player: p,
       avgDailyLast7Days: avgDaily ? Math.round(avgDaily * 10) / 10 : null,
       activeAlerts: alerts.length,
-      lastDailyCompletedAt:
-        dailySessions.find((s) => s.completedAt)?.completedAt ?? null,
+      lastDailyCompletedAt: latestCompletedSession?.completedAt ?? null,
+      todayCompletedAt: todayCompletedSession?.completedAt ?? null,
+      completedToday: todayCompletedSession != null,
     });
   }
   res.json(result);
